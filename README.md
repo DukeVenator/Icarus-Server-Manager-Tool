@@ -4,6 +4,7 @@ A Windows app that helps you install, run, and maintain an **Icarus Dedicated Se
 
 **Current release:** 1.0.1  
 **Last tested with Icarus Dedicated Server build:** 217
+<img width="1540" height="1625" alt="image" src="https://github.com/user-attachments/assets/f81b75e5-fe3b-4164-ba72-394a5ca4031f" />
 
 ---
 
@@ -60,6 +61,8 @@ That is enough to get a working dedicated server running.
 - **Last world**: Shows details from your selected prospect save.
 - **Manager Settings**: App behavior (theme, automation, paths, Discord, schedule, console filters).
 - **Stats**: Health and performance view (CPU, memory, uptime, restart and player info).
+- <img width="1512" height="643" alt="image" src="https://github.com/user-attachments/assets/55bb4de4-7e0b-47db-8a8a-48b17ccbc8c6" />
+
 
 ---
 

@@ -2,6 +2,7 @@ using IcarusServerManager.Models;
 using IcarusServerManager.Services;
 using IcarusServerManager.UI;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace IcarusServerManager;
@@ -9,6 +10,7 @@ namespace IcarusServerManager;
     public partial class Form1 : Form
     {
     public Process? serverProc;
+    private readonly object _serverProcDisposeLock = new();
     private bool serverStarted;
     private bool restartInProgress;
     private bool possibleServerEmpty = true;
@@ -1248,6 +1250,7 @@ namespace IcarusServerManager;
         toolTips.ShowAlways = true;
 
         toolTips.SetToolTip(startServerButton, "Start or stop the dedicated server process.");
+        toolTips.SetToolTip(forceKillServerButton, "Immediately terminate the server process. Skips graceful shutdown; saves may be lost.");
         toolTips.SetToolTip(installServerButton, "Install or update Icarus Dedicated Server using SteamCMD.");
         toolTips.SetToolTip(selectLocationButton, "Choose the dedicated server install folder (game root).");
         toolTips.SetToolTip(serverLocationBox, "Dedicated server install folder — used for the executable, ServerSettings.ini, and prospects.");
@@ -1654,6 +1657,8 @@ namespace IcarusServerManager;
         UpdateStatus("Running");
         startServerButton.BackColor = Color.Green;
         ChangeStartButton("Stop Server");
+        forceKillServerButton.Enabled = true;
+        ApplyTheme();
         logger.Info("Game server started.");
         PostDiscordWebhook(
             DiscordWebhookEventKind.ServerStart,
@@ -1670,6 +1675,8 @@ namespace IcarusServerManager;
         UpdateStatus("Idle");
         ChangeStartButton("Start Server");
         startServerButton.BackColor = Color.Maroon;
+        forceKillServerButton.Enabled = false;
+        ApplyTheme();
         if (wasRunning && !restartInProgress)
         {
             crashDetected = true;
@@ -1690,25 +1697,49 @@ namespace IcarusServerManager;
             return;
         }
 
+        var proc = serverProc;
         try
         {
             logger.Info("Stopping server...");
             restartInProgress = true;
-            var exitedGracefully = await RequestGracefulShutdownAsync(serverProc, TimeSpan.FromSeconds(20)).ConfigureAwait(true);
-            if (!exitedGracefully)
+            var exitedGracefully = await RequestGracefulShutdownAsync(proc, TimeSpan.FromSeconds(120)).ConfigureAwait(true);
+            if (!exitedGracefully && !SafeProcessHasExited(proc))
             {
                 logger.Warn("Server did not exit gracefully in time; forcing termination.");
-                serverProc.Kill(true);
-                serverProc.WaitForExit(5000);
+                try
+                {
+                    proc.Kill(true);
+                    proc.WaitForExit(5000);
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Force termination step failed: {ex.Message}");
+                }
             }
 
-            serverProc.Dispose();
-            serverProc = null;
+            lock (_serverProcDisposeLock)
+            {
+                if (ReferenceEquals(serverProc, proc))
+                {
+                    serverProc = null;
+                    try
+                    {
+                        proc.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warn($"Process dispose failed: {ex.Message}");
+                    }
+                }
+            }
+
             serverStarted = false;
             playerTracker.Clear();
             UpdateStatus("Idle");
             startServerButton.BackColor = Color.Maroon;
             ChangeStartButton("Start Server");
+            forceKillServerButton.Enabled = false;
+            ApplyTheme();
             logger.Info("Game server stopped.");
             if (!isRestartOperation)
             {
@@ -1729,27 +1760,59 @@ namespace IcarusServerManager;
         }
     }
 
-    private async Task<bool> RequestGracefulShutdownAsync(Process process, TimeSpan timeout)
+    private static bool SafeProcessHasExited(Process process)
     {
         try
         {
-            if (process.HasExited)
+            return process.HasExited;
+        }
+        catch (InvalidOperationException)
+        {
+            // Includes ObjectDisposedException on some runtimes where it derives from InvalidOperationException.
+            return true;
+        }
+    }
+
+    private async Task<bool> RequestGracefulShutdownAsync(Process process, TimeSpan totalTimeout)
+    {
+        try
+        {
+            if (SafeProcessHasExited(process))
             {
                 return true;
             }
 
-            if (process.StartInfo.RedirectStandardInput)
+            var deadline = DateTime.UtcNow + totalTimeout;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Dedicated server commonly accepts shutdown commands on stdin.
-                await process.StandardInput.WriteLineAsync("quit").ConfigureAwait(true);
-                await process.StandardInput.WriteLineAsync("exit").ConfigureAwait(true);
-                await process.StandardInput.FlushAsync().ConfigureAwait(true);
+                try
+                {
+                    if (WindowsConsoleShutdown.TrySendCtrlC(process.Id))
+                    {
+                        logger.Info("Sent Ctrl+C to the server process (graceful shutdown).");
+                    }
+                    else
+                    {
+                        logger.Warn("Ctrl+C could not be delivered to the server process; stdin fallback may be used.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Ctrl+C delivery threw: {ex.Message}");
+                }
             }
 
-            var until = DateTime.UtcNow + timeout;
-            while (DateTime.UtcNow < until)
+            // Give the dedicated server time to flush saves after Ctrl+C before trying stdin.
+            var firstPhaseEnd = DateTime.UtcNow + TimeSpan.FromSeconds(45);
+            if (firstPhaseEnd > deadline)
             {
-                if (process.HasExited)
+                firstPhaseEnd = deadline;
+            }
+
+            while (DateTime.UtcNow < firstPhaseEnd)
+            {
+                if (SafeProcessHasExited(process))
                 {
                     return true;
                 }
@@ -1757,13 +1820,126 @@ namespace IcarusServerManager;
                 await Task.Delay(250).ConfigureAwait(true);
             }
 
-            return process.HasExited;
+            if (!SafeProcessHasExited(process) && process.StartInfo.RedirectStandardInput)
+            {
+                try
+                {
+                    await process.StandardInput.WriteLineAsync("quit").ConfigureAwait(true);
+                    await process.StandardInput.WriteLineAsync("exit").ConfigureAwait(true);
+                    await process.StandardInput.FlushAsync().ConfigureAwait(true);
+                    logger.Info("Sent quit/exit on stdin (secondary shutdown path).");
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Stdin shutdown commands failed: {ex.Message}");
+                }
+            }
+
+            while (DateTime.UtcNow < deadline)
+            {
+                if (SafeProcessHasExited(process))
+                {
+                    return true;
+                }
+
+                await Task.Delay(250).ConfigureAwait(true);
+            }
+
+            return SafeProcessHasExited(process);
         }
         catch (Exception ex)
         {
             logger.Warn($"Graceful shutdown request failed; will force stop. {ex.Message}");
             return false;
         }
+    }
+
+    private async Task ForceKillServerAsync()
+    {
+        var proc = serverProc;
+        if (proc == null || SafeProcessHasExited(proc))
+        {
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            "Force kill ends the server immediately. Unsaved progress may be lost.\n\nContinue?",
+            "Force kill server",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+        if (confirm != DialogResult.Yes)
+        {
+            return;
+        }
+
+        restartInProgress = true;
+        try
+        {
+            logger.Warn("Force killing server process (user requested).");
+            if (!SafeProcessHasExited(proc))
+            {
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Force kill could not terminate the process.", ex);
+                    return;
+                }
+
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        proc.WaitForExit(8000);
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }).ConfigureAwait(true);
+            }
+
+            lock (_serverProcDisposeLock)
+            {
+                if (ReferenceEquals(serverProc, proc))
+                {
+                    serverProc = null;
+                    try
+                    {
+                        proc.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warn($"Process dispose after force kill failed: {ex.Message}");
+                    }
+                }
+            }
+
+            serverStarted = false;
+            playerTracker.Clear();
+            UpdateStatus("Idle");
+            startServerButton.BackColor = Color.Maroon;
+            ChangeStartButton("Start Server");
+            forceKillServerButton.Enabled = false;
+            ApplyTheme();
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.ServerStop,
+                "Server force-killed",
+                "Dedicated server process was terminated immediately (no graceful shutdown).",
+                BuildDiscordServerIdentityExtras());
+        }
+        finally
+        {
+            restartInProgress = false;
+        }
+    }
+
+    private async void forceKillServerButton_Click(object sender, EventArgs e)
+    {
+        await ForceKillServerAsync().ConfigureAwait(true);
     }
 
     private void PostDiscordWebhook(
@@ -2027,6 +2203,18 @@ namespace IcarusServerManager;
             startServerButton.BackColor = Color.Maroon;
             startServerButton.ForeColor = Color.White;
         }
+
+        var dark = managerOptions.Theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
+        if (forceKillServerButton.Enabled)
+        {
+            forceKillServerButton.BackColor = dark ? Color.FromArgb(180, 90, 0) : Color.DarkOrange;
+            forceKillServerButton.ForeColor = Color.White;
+        }
+        else
+        {
+            forceKillServerButton.BackColor = dark ? Color.FromArgb(53, 56, 66) : SystemColors.ControlDark;
+            forceKillServerButton.ForeColor = dark ? Color.FromArgb(200, 200, 205) : Color.Black;
+        }
     }
 
     private void ApplyChartTheme()
@@ -2252,7 +2440,11 @@ namespace IcarusServerManager;
     {
         try
         {
-            if (serverProc != null && !serverProc.HasExited)
+            if (serverProc != null && !serverProc.HasExited && serverStarted)
+            {
+                StopProcessAsync(isRestartOperation: true).GetAwaiter().GetResult();
+            }
+            else if (serverProc != null && !serverProc.HasExited)
             {
                 serverProc.Kill(true);
             }
@@ -2260,8 +2452,16 @@ namespace IcarusServerManager;
         catch (Exception ex)
         {
             logger.Error("Shutdown cleanup failed.", ex);
+            try
+            {
+                serverProc?.Kill(true);
+            }
+            catch
+            {
+                // best-effort
+            }
         }
-        }
+    }
 
         private void HandleExeOutput(object sender, DataReceivedEventArgs e)
     {

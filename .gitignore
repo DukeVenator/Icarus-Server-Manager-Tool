@@ -1,0 +1,19 @@
+# Build outputs
+**/bin/
+**/obj/
+publish/
+
+# IDE/user files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1633,6 +1633,7 @@ namespace IcarusServerManager;
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             CreateNoWindow = true
         };
 
@@ -1682,7 +1683,7 @@ namespace IcarusServerManager;
         }
     }
 
-    private void StopProcess()
+    private async Task StopProcessAsync(bool isRestartOperation = false)
     {
         if (!serverStarted || serverProc == null)
         {
@@ -1693,8 +1694,14 @@ namespace IcarusServerManager;
         {
             logger.Info("Stopping server...");
             restartInProgress = true;
-            serverProc.Kill(true);
-            serverProc.WaitForExit(5000);
+            var exitedGracefully = await RequestGracefulShutdownAsync(serverProc, TimeSpan.FromSeconds(20)).ConfigureAwait(true);
+            if (!exitedGracefully)
+            {
+                logger.Warn("Server did not exit gracefully in time; forcing termination.");
+                serverProc.Kill(true);
+                serverProc.WaitForExit(5000);
+            }
+
             serverProc.Dispose();
             serverProc = null;
             serverStarted = false;
@@ -1703,15 +1710,59 @@ namespace IcarusServerManager;
             startServerButton.BackColor = Color.Maroon;
             ChangeStartButton("Start Server");
             logger.Info("Game server stopped.");
-            PostDiscordWebhook(
-                DiscordWebhookEventKind.ServerStop,
-                "Server stopped",
-                "Dedicated server process was stopped by the manager.",
-                BuildDiscordServerIdentityExtras());
+            if (!isRestartOperation)
+            {
+                PostDiscordWebhook(
+                    DiscordWebhookEventKind.ServerStop,
+                    "Server stopped",
+                    "Dedicated server process was stopped by the manager.",
+                    BuildDiscordServerIdentityExtras());
+            }
         }
         catch (Exception ex)
         {
             logger.Error("Failed to stop server.", ex);
+        }
+        finally
+        {
+            restartInProgress = false;
+        }
+    }
+
+    private async Task<bool> RequestGracefulShutdownAsync(Process process, TimeSpan timeout)
+    {
+        try
+        {
+            if (process.HasExited)
+            {
+                return true;
+            }
+
+            if (process.StartInfo.RedirectStandardInput)
+            {
+                // Dedicated server commonly accepts shutdown commands on stdin.
+                await process.StandardInput.WriteLineAsync("quit").ConfigureAwait(true);
+                await process.StandardInput.WriteLineAsync("exit").ConfigureAwait(true);
+                await process.StandardInput.FlushAsync().ConfigureAwait(true);
+            }
+
+            var until = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < until)
+            {
+                if (process.HasExited)
+                {
+                    return true;
+                }
+
+                await Task.Delay(250).ConfigureAwait(true);
+            }
+
+            return process.HasExited;
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Graceful shutdown request failed; will force stop. {ex.Message}");
+            return false;
         }
     }
 
@@ -1759,11 +1810,10 @@ namespace IcarusServerManager;
             "Automated server restart",
             reason,
             BuildDiscordServerIdentityExtras()).ConfigureAwait(true);
-        StopProcess();
-        await Task.Delay(5000);
+        await StopProcessAsync(isRestartOperation: true).ConfigureAwait(true);
+        await Task.Delay(1500).ConfigureAwait(true);
         StartProcess();
         lastRestartAt = DateTime.Now;
-        restartInProgress = false;
         if (!serverStarted)
         {
             PostDiscordWebhook(
@@ -2186,11 +2236,11 @@ namespace IcarusServerManager;
         }
         }
 
-        private void startServerButton_Click(object sender, EventArgs e)
+        private async void startServerButton_Click(object sender, EventArgs e)
         {
             if (serverStarted)
             {
-                StopProcess();
+                await StopProcessAsync().ConfigureAwait(true);
             }
             else
             {

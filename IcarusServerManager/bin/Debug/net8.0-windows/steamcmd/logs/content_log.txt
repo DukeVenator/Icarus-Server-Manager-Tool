@@ -1,0 +1,79 @@
+
+
+[2025-02-14 12:47:10] Client version: 1738027521
+[2025-02-14 12:47:10] Load failed: C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd\steamapps\libraryfolders.vdf.
+[2025-02-14 12:47:10] Load failed: C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd\config\libraryfolders.vdf.
+[2025-02-14 12:47:10] Steam library folders configuration will be reset.
+[2025-02-14 12:47:10] No install folder configuration files found.
+[2025-02-14 12:47:10] Loaded 0 apps from install folder "C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd\steamapps\appmanifest_*.acf".
+[2025-02-14 12:47:10] Triggered async write of Steam library folders configuration (1 libraries).
+[2025-02-14 12:47:15] Loaded 0 apps from install folder "g:\test\steamapps\appmanifest_*.acf".
+[2025-02-14 12:47:15] Triggered async write of Steam library folders configuration (1 libraries).
+[2025-02-14 12:47:16] AppID 2089300 state changed : Update Required,
+[2025-02-14 12:47:16] AppID 2089300 user config changed : added depots 2089301
+[2025-02-14 12:47:16] AppID 2089300 scheduler update : Priority First, not played for 0 seconds, update disabled for 0 seconds
+[2025-02-14 12:47:16] AppID 2089300 state changed : Update Required,Update Queued,
+[2025-02-14 12:47:16] AppID 2089300 scheduler update : Priority First, not played for 0 seconds, update disabled for 0 seconds
+[2025-02-14 12:47:16] AppID 2089300 config changed : added depots 2089301
+[2025-02-14 12:47:16] AppID 2089300 state changed : Update Required,Update Queued,Update Running,
+[2025-02-14 12:47:16] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:47:16] AppID 2089300 update changed : Running Update,Reconfiguring,
+[2025-02-14 12:47:16] Got 30 download sources and 0 caching proxies via ContentServerDirectoryService::BYieldingGetServersForSteamPipe (CellID 75 / Launcher 3)
+[2025-02-14 12:47:16] Moving to source priority class '4'
+[2025-02-14 12:47:16] Created download interface of type 'SteamCache' (7) to host cache7-sea1.steamcontent.com (cache7-sea1.steamcontent.com)
+[2025-02-14 12:47:16] Created download interface of type 'SteamCache' (7) to host cache4-sea1.steamcontent.com (cache4-sea1.steamcontent.com)
+[2025-02-14 12:47:16] Created download interface of type 'SteamCache' (7) to host cache5-sea1.steamcontent.com (cache5-sea1.steamcontent.com)
+[2025-02-14 12:47:16] HTTP/2 available
+[2025-02-14 12:47:16] Created ipv4-only http client
+[2025-02-14 12:47:17] HTTPS (SteamCache,422) - cache7-sea1.steamcontent.com (205.196.6.168:443 / 205.196.6.168:443, host: cache7-sea1.steamcontent.com): Negotiated HTTP/2
+[2025-02-14 12:47:17] HTTP/2 (SteamCache,422) - cache7-sea1.steamcontent.com (205.196.6.168:443 / 205.196.6.168:443, host: cache7-sea1.steamcontent.com): cache7-sea1.steamcontent.com/depot/2089301/manifest/2642120375520269155/5/5041233436031769160 - received 200 (OK) HTTP response
+[2025-02-14 12:47:17] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:47:17] AppID 2089300 update changed : Running Update,Validating,
+[2025-02-14 12:47:17] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:47:17] AppID 2089300 update changed : Running Update,Preallocating,
+[2025-02-14 12:47:18] AppID 2089300 preallocated 254 files (9307 MB) 
+[2025-02-14 12:47:18] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:47:18] AppID 2089300 update started : download 0/6849574496, store 0/0, reuse 0/0, delta 0/0, stage 0/9771589771 
+[2025-02-14 12:47:18] AppID 2089300 state changed : Update Required,Update Queued,Update Running,Update Started,
+[2025-02-14 12:47:18] AppID 2089300 update changed : Running Update,Downloading,Staging,
+[2025-02-14 12:47:18] Downloading 9564 chunks from depot 2089301
+[2025-02-14 12:47:18] HTTPS (SteamCache,9) - cache4-sea1.steamcontent.com (205.196.6.169:443 / 205.196.6.169:443, host: cache4-sea1.steamcontent.com): Negotiated HTTP/2
+[2025-02-14 12:47:18] HTTPS (SteamCache,285) - cache5-sea1.steamcontent.com (205.196.6.166:443 / 205.196.6.166:443, host: cache5-sea1.steamcontent.com): Negotiated HTTP/2
+[2025-02-14 12:47:29] Increasing target number of download connections to 4 (rate was 0.000, now 87.552)
+[2025-02-14 12:47:29] Created download interface of type 'SteamCache' (7) to host cache6-sea1.steamcontent.com (cache6-sea1.steamcontent.com)
+[2025-02-14 12:47:33] HTTPS (SteamCache,286) - cache6-sea1.steamcontent.com (205.196.6.167:443 / 205.196.6.167:443, host: cache6-sea1.steamcontent.com): Negotiated HTTP/2
+[2025-02-14 12:47:42] Increasing target number of download connections to 5 (rate was 87.552, now 118.283)
+[2025-02-14 12:47:42] Created download interface of type 'SteamCache' (7) to host cache3-sea1.steamcontent.com (cache3-sea1.steamcontent.com)
+[2025-02-14 12:47:43] HTTPS (SteamCache,8) - cache3-sea1.steamcontent.com (205.196.6.171:443 / 205.196.6.171:443, host: cache3-sea1.steamcontent.com): Negotiated HTTP/2
+[2025-02-14 12:48:30] Current download rate: 126.953 Mbps
+[2025-02-14 12:49:31] Current download rate: 130.532 Mbps
+[2025-02-14 12:50:32] Current download rate: 130.049 Mbps
+[2025-02-14 12:51:34] Current download rate: 108.782 Mbps
+[2025-02-14 12:52:16] Got 30 download sources and 0 caching proxies via ContentServerDirectoryService::BYieldingGetServersForSteamPipe (CellID 75 / Launcher 3)
+[2025-02-14 12:52:35] Current download rate: 131.403 Mbps
+[2025-02-14 12:52:48] stats: (SteamCache, 422) cache7-sea1.steamcontent.com: 1129685021 Bytes, 331 sec (27.30 Mbps). 1592 Hits / 3 Misses (100 %, 100 % bytes)
+[2025-02-14 12:52:48] stats: (Invalid, 0) : 5259170365 Bytes, 331 sec (127.09 Mbps). 6801 Hits / 216 Misses (97 %, 99 % bytes)
+[2025-02-14 12:52:48] stats: (SteamCache, 9) cache4-sea1.steamcontent.com: 991296496 Bytes, 330 sec (24.04 Mbps). 1358 Hits / 63 Misses (96 %, 98 % bytes)
+[2025-02-14 12:52:48] stats: (SteamCache, 285) cache5-sea1.steamcontent.com: 1395850432 Bytes, 330 sec (33.84 Mbps). 1775 Hits / 138 Misses (93 %, 96 % bytes)
+[2025-02-14 12:52:48] stats: (SteamCache, 286) cache6-sea1.steamcontent.com: 744503504 Bytes, 318 sec (18.73 Mbps). 945 Hits / 12 Misses (99 %, 99 % bytes)
+[2025-02-14 12:52:48] stats: (SteamCache, 8) cache3-sea1.steamcontent.com: 997834912 Bytes, 306 sec (26.09 Mbps). 1131 Hits / 0 Misses (100 %, 100 % bytes)
+[2025-02-14 12:53:36] Current download rate: 133.728 Mbps
+[2025-02-14 12:54:26] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:54:26] AppID 2089300 update changed : Running Update,Verifying,
+[2025-02-14 12:54:31] Verified 2048 MB in 'C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd', clean bytes tally is now 2048 MB
+[2025-02-14 12:54:31] Triggered async write of Steam library folders configuration (1 libraries).
+[2025-02-14 12:54:31] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:54:31] AppID 2089300 update changed : Running Update,Committing,
+[2025-02-14 12:54:31] AppID 2089300 starting commit from "g:\test\steamapps\downloading\2089300" to "g:\test" : 416 updated, 0 moved, 0 deleted files
+[2025-02-14 12:54:31] AppID 2089300 state changed : Fully Installed,Update Queued,Update Running,
+[2025-02-14 12:54:31] AppID 2089300 finished update, 1 mounted depots (BuildID 17344735) : 2089301 (2642120375520269155),
+[2025-02-14 12:54:31] AppID 2089300 update changed : Running Update,
+[2025-02-14 12:54:31] AppID 2089300 update changed : None
+[2025-02-14 12:54:31] AppID 2089300 state changed : Fully Installed,Update Queued,
+[2025-02-14 12:54:31] AppID 2089300 state changed : Fully Installed,
+[2025-02-14 12:54:31] AppID 2089300 scheduler finished : removed from schedule (result No Error, state 0xc) 
+[2025-02-14 12:54:32] HTTP/2 (SteamCache,8) - cache3-sea1.steamcontent.com (205.196.6.171:443 / 205.196.6.171:443, host: cache3-sea1.steamcontent.com): Closing connection
+[2025-02-14 12:54:32] HTTP/2 (SteamCache,286) - cache6-sea1.steamcontent.com (205.196.6.167:443 / 205.196.6.167:443, host: cache6-sea1.steamcontent.com): Closing connection
+[2025-02-14 12:54:32] HTTP/2 (SteamCache,285) - cache5-sea1.steamcontent.com (205.196.6.166:443 / 205.196.6.166:443, host: cache5-sea1.steamcontent.com): Closing connection
+[2025-02-14 12:54:32] HTTP/2 (SteamCache,9) - cache4-sea1.steamcontent.com (205.196.6.169:443 / 205.196.6.169:443, host: cache4-sea1.steamcontent.com): Closing connection
+[2025-02-14 12:54:32] HTTP/2 (SteamCache,422) - cache7-sea1.steamcontent.com (205.196.6.168:443 / 205.196.6.168:443, host: cache7-sea1.steamcontent.com): Closing connection

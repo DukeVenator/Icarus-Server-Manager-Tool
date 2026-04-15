@@ -1,0 +1,25 @@
+
+
+[2025-02-14 12:47:05] Client version: 1738027521
+[2025-02-14 12:47:05] ThreadedReadFromDisk: loading appinfo cache from: C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd/appcache/appinfo.vdf
+[2025-02-14 12:47:05] ThreadedReadFromDisk: failed to open file: C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd/appcache/appinfo.vdf
+[2025-02-14 12:47:05] CAppInfoCacheReadFromDiskThread took 0 milliseconds to initialize
+[2025-02-14 12:47:10] RequestAppInfoUpdate: AppIDs 7
+[2025-02-14 12:47:10] Change number 0->27486877, apps: 0/0, packages: 0/0
+[2025-02-14 12:47:10] Requesting 1 apps, 1 packages (meta data, 1024 prev attempts, expected 0 KB)
+[2025-02-14 12:47:11] Downloaded 1 apps via HTTP, 14 KB (3 KB compressed)
+[2025-02-14 12:47:11] Requesting 0 apps, 1 packages (full data, 1024 prev attempts, expected 17 KB)
+[2025-02-14 12:47:11] UpdatesJob: finished OK, apps updated 1 (14 KB), packages updated 1 (17 KB)
+[2025-02-14 12:47:11] Requesting 742 apps, 0 packages (meta data, 1024 prev attempts, expected 34 KB)
+[2025-02-14 12:47:12] Requested 87 app access tokens, 17 received, 70 denied
+[2025-02-14 12:47:12] Updated SHAs with 17 new access tokens
+[2025-02-14 12:47:14] Downloaded 132 apps via HTTP, 1742 KB (418 KB compressed)
+[2025-02-14 12:47:14] Requesting 610 apps, 0 packages (full data, 1024 prev attempts, expected 2568 KB)
+[2025-02-14 12:47:15] UpdatesJob: finished OK, apps updated 742 (4282 KB), packages updated 0 (0 KB)
+[2025-02-14 12:47:15] RequestAppInfoUpdate: AppIDs 2089300
+[2025-02-14 12:47:15] Requesting 1 apps, 0 packages (meta data, 1024 prev attempts, expected 0 KB)
+[2025-02-14 12:47:15] Requested 1 app access tokens, 1 received, 0 denied
+[2025-02-14 12:47:16] Updated SHAs with 1 new access tokens
+[2025-02-14 12:47:16] UpdatesJob: finished OK, apps updated 0 (0 KB), packages updated 0 (0 KB)
+[2025-02-14 12:47:30] ThreadedWriteToDisk: writing appinfo cache to: C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd/appcache/appinfo.vdf
+[2025-02-14 12:47:30] App cache write succeeded C:\Users\rottj\source\repos\IcarusServerManager\IcarusServerManager\bin\Debug\net8.0-windows\steamcmd/appcache/appinfo.vdf (743 apps, 2079 KB) in 21 ms

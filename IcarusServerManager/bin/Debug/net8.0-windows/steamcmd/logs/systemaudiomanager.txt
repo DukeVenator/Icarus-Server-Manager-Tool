@@ -1,0 +1,4 @@
+
+
+[2025-02-14 12:47:05] Client version: 1738027521
+[2025-02-14 12:47:05] Initialized system audio manager: default

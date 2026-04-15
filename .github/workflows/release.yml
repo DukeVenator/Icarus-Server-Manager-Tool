@@ -1,0 +1,72 @@
+name: release
+
+# Releases only run after tests pass. Tag pushes create a GitHub Release + asset zip.
+# workflow_dispatch runs tests + publish and uploads a build artifact (no GitHub Release).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore IcarusServerManager.sln
+
+      - name: Build
+        run: dotnet build IcarusServerManager.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test IcarusServerManager.sln --configuration Release --no-build --verbosity normal
+
+  publish:
+    needs: test
+    if: success()
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish (win-x64, framework-dependent)
+        run: dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false -o "${{ github.workspace }}/publish" --verbosity minimal
+
+      - name: Zip publish folder
+        shell: pwsh
+        run: Compress-Archive -Path "${{ github.workspace }}/publish/*" -DestinationPath "${{ github.workspace }}/IcarusServerManager-${{ github.ref_name }}-win-x64.zip" -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IcarusServerManager-${{ github.ref_name }}-win-x64
+          path: ${{ github.workspace }}/publish/
+
+      - name: Create GitHub Release (tags only)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: IcarusServerManager-${{ github.ref_name }}-win-x64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

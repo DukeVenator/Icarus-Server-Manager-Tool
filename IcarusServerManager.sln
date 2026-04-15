@@ -1,0 +1,31 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35806.99 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IcarusServerManager", "IcarusServerManager\IcarusServerManager.csproj", "{0650C926-B57B-47CA-B387-F26209416D0E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IcarusServerManager.Tests", "IcarusServerManager.Tests\IcarusServerManager.Tests.csproj", "{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0650C926-B57B-47CA-B387-F26209416D0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0650C926-B57B-47CA-B387-F26209416D0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0650C926-B57B-47CA-B387-F26209416D0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0650C926-B57B-47CA-B387-F26209416D0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {5D8971FE-82FA-4A86-A7F5-ABF53C8D7A62}
+	EndGlobalSection
+EndGlobal

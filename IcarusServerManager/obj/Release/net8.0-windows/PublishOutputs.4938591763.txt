@@ -1,0 +1,8 @@
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.exe
+F:\Servers\Icarus\ManagerCode\publish\Release\steamcmd\steamcmd.exe
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.dll
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.deps.json
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.runtimeconfig.json
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.dll.config
+F:\Servers\Icarus\ManagerCode\publish\Release\IcarusServerManager.pdb
+F:\Servers\Icarus\ManagerCode\publish\Release\Newtonsoft.Json.dll

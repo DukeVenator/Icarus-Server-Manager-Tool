@@ -32,6 +32,7 @@ namespace IcarusServerManager
             primaryPanel = new Panel();
             serverStatusBox = new TextBox();
             startServerButton = new Button();
+            forceKillServerButton = new Button();
             installServerButton = new Button();
             label1 = new Label();
             copyrightLabel = new Label();
@@ -83,13 +84,14 @@ namespace IcarusServerManager
             // 
             primaryPanel.BorderStyle = BorderStyle.FixedSingle;
             primaryPanel.Controls.Add(serverStatusBox);
+            primaryPanel.Controls.Add(forceKillServerButton);
             primaryPanel.Controls.Add(startServerButton);
             primaryPanel.Controls.Add(installServerButton);
             primaryPanel.Controls.Add(label1);
             primaryPanel.Dock = DockStyle.Top;
             primaryPanel.Location = new Point(0, 36);
             primaryPanel.Name = "primaryPanel";
-            primaryPanel.Size = new Size(694, 121);
+            primaryPanel.Size = new Size(694, 144);
             primaryPanel.TabIndex = 1;
             // 
             // serverStatusBox
@@ -117,6 +119,21 @@ namespace IcarusServerManager
             startServerButton.Text = "Start Server";
             startServerButton.UseVisualStyleBackColor = false;
             startServerButton.Click += startServerButton_Click;
+            // 
+            // forceKillServerButton
+            // 
+            forceKillServerButton.BackColor = SystemColors.ControlDark;
+            forceKillServerButton.Dock = DockStyle.Top;
+            forceKillServerButton.Enabled = false;
+            forceKillServerButton.Font = new Font("Segoe UI", 9F, FontStyle.Bold, GraphicsUnit.Point, 0);
+            forceKillServerButton.ForeColor = Color.Black;
+            forceKillServerButton.Location = new Point(0, 74);
+            forceKillServerButton.Name = "forceKillServerButton";
+            forceKillServerButton.Size = new Size(692, 23);
+            forceKillServerButton.TabIndex = 6;
+            forceKillServerButton.Text = "Force Kill (no save)";
+            forceKillServerButton.UseVisualStyleBackColor = false;
+            forceKillServerButton.Click += forceKillServerButton_Click;
             // 
             // installServerButton
             // 
@@ -151,7 +168,7 @@ namespace IcarusServerManager
             copyrightLabel.Name = "copyrightLabel";
             copyrightLabel.Size = new Size(694, 15);
             copyrightLabel.TabIndex = 3;
-            copyrightLabel.Text = "v1.0.1 | Icarus Server Manager | Tested: Icarus build 217";
+            copyrightLabel.Text = "v1.0.4 | Icarus Server Manager | Tested: Icarus build 217";
             copyrightLabel.TextAlign = ContentAlignment.TopRight;
             // 
             // settingsTabControl
@@ -372,7 +389,7 @@ namespace IcarusServerManager
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(694, 450);
+            ClientSize = new Size(694, 473);
             Controls.Add(settingsTabControl);
             Controls.Add(copyrightLabel);
             Controls.Add(primaryPanel);
@@ -405,6 +422,7 @@ namespace IcarusServerManager
         private Button installServerButton;
         private TextBox serverStatusBox;
         private Button startServerButton;
+        private Button forceKillServerButton;
         private TabControl settingsTabControl;
         private TabPage consoleTab;
         private TabPage managerSettingsTab;

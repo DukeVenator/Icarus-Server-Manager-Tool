@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IcarusServerManager")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.1.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.1+a6994628a55c118d7fbd005bb9113a4813f959ea")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.1+f5dbf3da42bd7fb1e48a66afa36dec7b4a00048f")]
 [assembly: System.Reflection.AssemblyProductAttribute("IcarusServerManager")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IcarusServerManager")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.1.0")]

@@ -20,7 +20,7 @@ A Windows app that helps you install, run, and maintain an **Icarus Dedicated Se
 
 ---
 
-## Getting started (non-technical)
+## Getting started
 
 If this is your first time, follow these steps in order:
 

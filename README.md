@@ -1,7 +1,7 @@
 # Icarus Server Manager
 
 [![Pipeline](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml/badge.svg)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/DukeVenator/Icarus-Server-Manager-Tool?label=coverage)](https://codecov.io/gh/DukeVenator/Icarus-Server-Manager-Tool)
+[![Coverage](https://codecov.io/gh/DukeVenator/Icarus-Server-Manager-Tool/branch/main/graph/badge.svg)](https://codecov.io/gh/DukeVenator/Icarus-Server-Manager-Tool)
 [![Latest Release](https://img.shields.io/github/v/release/DukeVenator/Icarus-Server-Manager-Tool?label=latest%20release)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/latest)
 
 A Windows app that helps you install, run, and maintain an **Icarus Dedicated Server** without editing files by hand.

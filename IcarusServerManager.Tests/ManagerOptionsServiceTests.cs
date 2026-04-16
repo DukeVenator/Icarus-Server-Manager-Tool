@@ -78,7 +78,7 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         Assert.Equal(20000, loaded.LaunchGamePort);
         Assert.Equal(27020, loaded.LaunchQueryPort);
         Assert.Equal(@"C:\logs\icarus.log", loaded.LaunchLogPath);
-        Assert.Equal(5, loaded.OptionsSchemaVersion);
+        Assert.Equal(6, loaded.OptionsSchemaVersion);
     }
 
     [Fact]

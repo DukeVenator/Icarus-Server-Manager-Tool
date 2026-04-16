@@ -75,5 +75,12 @@ internal sealed class ManagerOptionsService
             ConsoleLogFilter.ApplyPreset(o, "Balanced");
             o.OptionsSchemaVersion = 5;
         }
+
+        if (o.OptionsSchemaVersion < 6)
+        {
+            o.PauseIntervalRestartWhenEmpty = false;
+            o.IntervalRestartUseEmptyIdleTimer = false;
+            o.OptionsSchemaVersion = 6;
+        }
     }
 }

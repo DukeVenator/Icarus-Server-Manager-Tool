@@ -167,4 +167,60 @@ public sealed class RestartPolicyServiceTests
         var options = new ManagerOptions { CrashRestartRetryDelaySeconds = 0 };
         Assert.Equal(1, service.GetCrashDelaySeconds(options));
     }
+
+    [Fact]
+    public void Evaluate_PausesIntervalTimer_WhileServerEmpty()
+    {
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            IntervalRestartEnabled = true,
+            IntervalRestartMinutes = 60,
+            IntervalWarningMinutes = 5,
+            PauseIntervalRestartWhenEmpty = true,
+            IntervalRestartUseEmptyIdleTimer = false,
+            EmptyServerRestartEnabled = false
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        // Empty from minute 30 to 70: interval timer should be paused for 40 minutes.
+        _ = service.Evaluate(options, true, start, start.AddMinutes(30), false, 100, true);
+        _ = service.Evaluate(options, true, start, start.AddMinutes(70), false, 100, false);
+
+        // At +95 we're exactly at warning threshold ((60 + 40) - 5).
+        var warning = service.Evaluate(options, true, start, start.AddMinutes(95), false, 100, false);
+        Assert.True(warning.ShouldWarn);
+        Assert.False(warning.ShouldRestart);
+
+        // At +101 we're past adjusted due time ((60 + 40) + 1).
+        var restart = service.Evaluate(options, true, start, start.AddMinutes(101), false, 100, false);
+        Assert.True(restart.ShouldRestart);
+    }
+
+    [Fact]
+    public void Evaluate_UsesEmptyTimer_WhenIntervalPausedAndToggleEnabled()
+    {
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            IntervalRestartEnabled = true,
+            IntervalRestartMinutes = 120,
+            IntervalWarningMinutes = 5,
+            PauseIntervalRestartWhenEmpty = true,
+            IntervalRestartUseEmptyIdleTimer = true,
+            EmptyServerRestartEnabled = true,
+            EmptyServerRestartMinutes = 30,
+            EmptyServerWarningMinutes = 5
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        _ = service.Evaluate(options, true, start, start, false, 100, true);
+        var warning = service.Evaluate(options, true, start, start.AddMinutes(26), false, 100, true);
+        Assert.True(warning.ShouldWarn);
+        Assert.Contains("Interval paused while empty", warning.Reason, StringComparison.Ordinal);
+
+        var restart = service.Evaluate(options, true, start, start.AddMinutes(31), false, 100, true);
+        Assert.True(restart.ShouldRestart);
+        Assert.Contains("Interval paused while empty", restart.Reason, StringComparison.Ordinal);
+    }
 }

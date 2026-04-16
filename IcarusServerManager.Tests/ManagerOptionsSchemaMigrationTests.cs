@@ -42,7 +42,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(5, o.OptionsSchemaVersion);
+        Assert.Equal(6, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -57,7 +57,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(5, o.OptionsSchemaVersion);
+        Assert.Equal(6, o.OptionsSchemaVersion);
         Assert.False(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -72,7 +72,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(5, o.OptionsSchemaVersion);
+        Assert.Equal(6, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyUnexpectedExit);
         Assert.True(o.DiscordWebhookNotifyServerStop);
     }

@@ -35,7 +35,7 @@ public sealed class ManagerOptionsServiceTests : IDisposable
     {
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal("Light", o.Theme);
+        Assert.Equal("Dark", o.Theme);
         Assert.True(o.IntervalRestartEnabled);
     }
 
@@ -87,6 +87,6 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         File.WriteAllText(_path, "{ not json");
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal("Light", o.Theme);
+        Assert.Equal("Dark", o.Theme);
     }
 }

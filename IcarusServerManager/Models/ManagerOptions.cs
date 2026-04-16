@@ -2,7 +2,7 @@ namespace IcarusServerManager.Models;
 
 internal sealed class ManagerOptions
 {
-    public string Theme { get; set; } = "Light";
+    public string Theme { get; set; } = "Dark";
     public bool IntervalRestartEnabled { get; set; } = true;
     public int IntervalRestartMinutes { get; set; } = 60;
     public int IntervalWarningMinutes { get; set; } = 5;

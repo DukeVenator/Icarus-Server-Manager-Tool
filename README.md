@@ -7,7 +7,7 @@
 A Windows app that helps you install, run, and maintain an **Icarus Dedicated Server** without editing files by hand.
 
 <!-- RELEASE_BLOCK -->
-**Latest release:** [v1.0.4](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/v1.0.4) — on that page, download **IcarusServerManager-v1.0.4-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
+**Latest release:** [v1.0.5](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/v1.0.5) — on that page, download **IcarusServerManager-v1.0.5-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
 <!-- /RELEASE_BLOCK -->
 
 **Last tested with Icarus Dedicated Server build:** 227

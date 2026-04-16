@@ -2,7 +2,10 @@
 
 A Windows app that helps you install, run, and maintain an **Icarus Dedicated Server** without editing files by hand.
 
-**Current release:** 1.0.1  
+<!-- RELEASE_BLOCK -->
+**Latest release:** [v1.0.4](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/v1.0.4) — on that page, download **IcarusServerManager-v1.0.4-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
+<!-- /RELEASE_BLOCK -->
+
 **Last tested with Icarus Dedicated Server build:** 217
 <img width="1540" height="1625" alt="image" src="https://github.com/user-attachments/assets/f81b75e5-fe3b-4164-ba72-394a5ca4031f" />
 
@@ -25,29 +28,32 @@ A Windows app that helps you install, run, and maintain an **Icarus Dedicated Se
 
 If this is your first time, follow these steps in order:
 
-1. **Open Manager Settings**
+1. **Download the manager**  
+   Use the **Latest release** link at the top of this README. On the release page, download the **IcarusServerManager-*-win-x64.zip** file under **Assets**, extract it anywhere you like, and run `IcarusServerManager.exe`.
+
+2. **Open Manager Settings**
    - At the top, set your **Server install folder**.
    - Use **Browse…** to pick the folder where Icarus server files should live.
    - You can also use **Setup wizard…** if you want guidance.
 
-2. **Install or update the server**
+3. **Install or update the server**
    - Click **Install/Update Server**.
    - Wait until the console says install/update completed.
 
-3. **Configure your server**
+4. **Configure your server**
    - Go to **Server Settings**.
    - Fill in your server name, ports, and gameplay options.
    - If unsure, leave most defaults as-is at first.
 
-4. **Save your settings**
+5. **Save your settings**
    - Click **Save to INI** (game server settings).
    - Click **Save Manager Options** (manager app settings like restart rules, theme, Discord, console behavior).
 
-5. **Start the server**
+6. **Start the server**
    - Click **Start Server**.
    - Watch the **Console** tab for startup messages.
 
-6. **(Optional) Turn on automation**
+7. **(Optional) Turn on automation**
    - In **Manager Settings**, enable restart policies and/or Discord notifications.
 
 That is enough to get a working dedicated server running.
@@ -149,12 +155,13 @@ dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-
 
 - CI workflow runs build + tests on pushes/PRs.
 - Release workflow runs on `v*` tags and publishes win-x64 artifacts.
+- Pushing a **version tag** also updates the **Latest release** block at the top of this README on `main` (see `<!-- RELEASE_BLOCK -->` in the source).
 
 Example release tag:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.4
+git push origin v1.0.4
 ```
 
 ---

@@ -1179,7 +1179,7 @@ namespace IcarusServerManager;
 
     private void SaveManagerOptionsFromUi(bool isExplicitSave)
     {
-        managerOptions.Theme = GetString("Theme", "Light");
+        managerOptions.Theme = GetString("Theme", "Dark");
         managerOptions.IntervalRestartEnabled = GetBool("IntervalRestartEnabled", true);
         managerOptions.IntervalRestartMinutes = GetInt("IntervalRestartMinutes", 60);
         managerOptions.IntervalWarningMinutes = GetInt("IntervalWarningMinutes", 5);

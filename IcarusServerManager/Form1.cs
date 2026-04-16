@@ -13,6 +13,7 @@ namespace IcarusServerManager;
     private readonly object _serverProcDisposeLock = new();
     private bool serverStarted;
     private bool restartInProgress;
+    private int _serverReadyAnnounced;
     private bool possibleServerEmpty = true;
     private DateTime startTime;
     private DateTime lastRestartAt = DateTime.MinValue;
@@ -40,6 +41,7 @@ namespace IcarusServerManager;
     private readonly System.Windows.Forms.Timer heartbeatTimer = new() { Interval = 60_000 };
     private bool _discordPolicyWarningActive;
     private DateTime? _scheduledUpdateWebhookBucketUtc;
+    private const string ReadyForPlayersLogMarker = "IcarusOSSLog: Error: OnResUserTicket : No player found";
     private DateTime _lastDiscordHeartbeatUtc = DateTime.MinValue;
     private bool _installPathPreviouslyValid = true;
     private bool _suppressConsoleLoggingEvents;
@@ -1651,26 +1653,23 @@ namespace IcarusServerManager;
         playerTracker.Clear();
         startTime = DateTime.Now;
         serverStarted = true;
+        _serverReadyAnnounced = 0;
         restartInProgress = false;
         crashDetected = false;
         restartPolicyService.ResetCrashAttempts();
-        UpdateStatus("Running");
+        UpdateStatus("Starting...");
         startServerButton.BackColor = Color.Green;
         ChangeStartButton("Stop Server");
         forceKillServerButton.Enabled = true;
         ApplyTheme();
         logger.Info("Game server started.");
-        PostDiscordWebhook(
-            DiscordWebhookEventKind.ServerStart,
-            "Server online",
-            "Dedicated server process is running. Watch the manager log for `Match State` and player join lines.",
-            BuildDiscordServerIdentityExtras());
     }
 
     private void OnServerExited()
     {
         var wasRunning = serverStarted;
         serverStarted = false;
+        _serverReadyAnnounced = 0;
         playerTracker.Clear();
         UpdateStatus("Idle");
         ChangeStartButton("Start Server");
@@ -1734,6 +1733,7 @@ namespace IcarusServerManager;
             }
 
             serverStarted = false;
+            _serverReadyAnnounced = 0;
             playerTracker.Clear();
             UpdateStatus("Idle");
             startServerButton.BackColor = Color.Maroon;
@@ -2471,6 +2471,18 @@ namespace IcarusServerManager;
         }
 
         var line = e.Data;
+        if (line.Contains(ReadyForPlayersLogMarker, StringComparison.OrdinalIgnoreCase) &&
+            Interlocked.Exchange(ref _serverReadyAnnounced, 1) == 0)
+        {
+            logger.Info("Detected readiness marker in server output. Server is ready for players.");
+            UpdateStatus("Running (Ready for players)");
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.ServerStart,
+                "Server ready for players",
+                "Readiness marker detected in startup logs: `OnResUserTicket : No player found`.",
+                BuildDiscordServerIdentityExtras());
+        }
+
         var playerLine = playerTracker.ProcessLogLine(line);
         switch (playerLine.Kind)
         {

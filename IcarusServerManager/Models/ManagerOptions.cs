@@ -6,6 +6,8 @@ internal sealed class ManagerOptions
     public bool IntervalRestartEnabled { get; set; } = true;
     public int IntervalRestartMinutes { get; set; } = 60;
     public int IntervalWarningMinutes { get; set; } = 5;
+    public bool PauseIntervalRestartWhenEmpty { get; set; }
+    public bool IntervalRestartUseEmptyIdleTimer { get; set; }
     public bool CrashRestartEnabled { get; set; } = true;
     public int CrashRestartRetryDelaySeconds { get; set; } = 15;
     public int CrashRestartMaxAttempts { get; set; } = 5;
@@ -22,7 +24,7 @@ internal sealed class ManagerOptions
     public string DiscordWebhookUrl { get; set; } = string.Empty;
 
     /// <summary>Incremented when new option groups are added; used for one-time migration on load.</summary>
-    public int OptionsSchemaVersion { get; set; } = 5;
+    public int OptionsSchemaVersion { get; set; } = 6;
 
     /// <summary>Game port for -Port (manager only; not written to ServerSettings.ini).</summary>
     public int LaunchGamePort { get; set; } = 17777;

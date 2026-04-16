@@ -15,6 +15,8 @@ internal sealed class RestartPolicyService
     private int _crashAttempts;
     private DateTime _highMemorySince = DateTime.MinValue;
     private DateTime _emptySince = DateTime.MinValue;
+    private DateTime _intervalPauseStarted = DateTime.MinValue;
+    private TimeSpan _intervalPausedTotal = TimeSpan.Zero;
 
     public RestartDecision Evaluate(
         ManagerOptions options,
@@ -36,28 +38,77 @@ internal sealed class RestartPolicyService
 
         if (!serverStarted)
         {
+            _emptySince = DateTime.MinValue;
+            _highMemorySince = DateTime.MinValue;
+            _intervalPauseStarted = DateTime.MinValue;
+            _intervalPausedTotal = TimeSpan.Zero;
+            _nextIntervalWarningAt = DateTime.MinValue;
             return new RestartDecision();
         }
 
+        var usingEmptyTimerForPausedInterval = false;
+        var intervalPausedBecauseEmpty = false;
         if (options.IntervalRestartEnabled)
         {
-            var nextRestart = startTime.AddMinutes(options.IntervalRestartMinutes);
-            var warningAt = nextRestart.AddMinutes(-Math.Abs(options.IntervalWarningMinutes));
-            if (now >= warningAt && now < nextRestart && _nextIntervalWarningAt != warningAt)
+            if (options.PauseIntervalRestartWhenEmpty && maybeEmptyFromLogs)
             {
-                _nextIntervalWarningAt = warningAt;
-                return new RestartDecision
+                intervalPausedBecauseEmpty = true;
+                if (_intervalPauseStarted == DateTime.MinValue)
                 {
-                    ShouldWarn = true,
-                    Reason = $"Interval restart warning: restart in {Math.Max(0, (int)(nextRestart - now).TotalMinutes)} minute(s)."
-                };
+                    _intervalPauseStarted = now;
+                }
+
+                if (options.IntervalRestartUseEmptyIdleTimer && options.EmptyServerRestartEnabled)
+                {
+                    usingEmptyTimerForPausedInterval = true;
+                    var decision = EvaluateEmptyServerPolicy(options, now, maybeEmptyFromLogs);
+                    if (decision.ShouldWarn || decision.ShouldRestart)
+                    {
+                        return new RestartDecision
+                        {
+                            ShouldWarn = decision.ShouldWarn,
+                            ShouldRestart = decision.ShouldRestart,
+                            Reason = $"Interval paused while empty: {decision.Reason}"
+                        };
+                    }
+                }
+            }
+            else
+            {
+                if (_intervalPauseStarted != DateTime.MinValue)
+                {
+                    _intervalPausedTotal += now - _intervalPauseStarted;
+                    _intervalPauseStarted = DateTime.MinValue;
+                }
             }
 
-            if (now >= nextRestart)
+            if (!intervalPausedBecauseEmpty)
             {
-                _nextIntervalWarningAt = DateTime.MinValue;
-                return new RestartDecision { ShouldRestart = true, Reason = "Interval policy triggered restart." };
+                var nextRestart = startTime
+                    .Add(_intervalPausedTotal)
+                    .AddMinutes(options.IntervalRestartMinutes);
+                var warningAt = nextRestart.AddMinutes(-Math.Abs(options.IntervalWarningMinutes));
+                if (now >= warningAt && now < nextRestart && _nextIntervalWarningAt != warningAt)
+                {
+                    _nextIntervalWarningAt = warningAt;
+                    return new RestartDecision
+                    {
+                        ShouldWarn = true,
+                        Reason = $"Interval restart warning: restart in {Math.Max(0, (int)(nextRestart - now).TotalMinutes)} minute(s)."
+                    };
+                }
+
+                if (now >= nextRestart)
+                {
+                    _nextIntervalWarningAt = DateTime.MinValue;
+                    return new RestartDecision { ShouldRestart = true, Reason = "Interval policy triggered restart." };
+                }
             }
+        }
+        else
+        {
+            _intervalPauseStarted = DateTime.MinValue;
+            _intervalPausedTotal = TimeSpan.Zero;
         }
 
         if (options.HighMemoryRestartEnabled)
@@ -88,32 +139,43 @@ internal sealed class RestartPolicyService
             }
         }
 
-        if (options.EmptyServerRestartEnabled)
+        if (options.EmptyServerRestartEnabled && !usingEmptyTimerForPausedInterval)
         {
-            if (maybeEmptyFromLogs)
+            var decision = EvaluateEmptyServerPolicy(options, now, maybeEmptyFromLogs);
+            if (decision.ShouldWarn || decision.ShouldRestart)
             {
-                if (_emptySince == DateTime.MinValue)
-                {
-                    _emptySince = now;
-                }
-
-                var restartAt = _emptySince.AddMinutes(options.EmptyServerRestartMinutes);
-                var warnAt = restartAt.AddMinutes(-Math.Abs(options.EmptyServerWarningMinutes));
-                if (now >= warnAt && now < restartAt)
-                {
-                    return new RestartDecision { ShouldWarn = true, Reason = "Empty server warning threshold approaching." };
-                }
-
-                if (now >= restartAt)
-                {
-                    _emptySince = DateTime.MinValue;
-                    return new RestartDecision { ShouldRestart = true, Reason = "Empty server policy triggered restart." };
-                }
+                return decision;
             }
-            else
+        }
+
+        return new RestartDecision();
+    }
+
+    private RestartDecision EvaluateEmptyServerPolicy(ManagerOptions options, DateTime now, bool maybeEmptyFromLogs)
+    {
+        if (maybeEmptyFromLogs)
+        {
+            if (_emptySince == DateTime.MinValue)
+            {
+                _emptySince = now;
+            }
+
+            var restartAt = _emptySince.AddMinutes(options.EmptyServerRestartMinutes);
+            var warnAt = restartAt.AddMinutes(-Math.Abs(options.EmptyServerWarningMinutes));
+            if (now >= warnAt && now < restartAt)
+            {
+                return new RestartDecision { ShouldWarn = true, Reason = "Empty server warning threshold approaching." };
+            }
+
+            if (now >= restartAt)
             {
                 _emptySince = DateTime.MinValue;
+                return new RestartDecision { ShouldRestart = true, Reason = "Empty server policy triggered restart." };
             }
+        }
+        else
+        {
+            _emptySince = DateTime.MinValue;
         }
 
         return new RestartDecision();

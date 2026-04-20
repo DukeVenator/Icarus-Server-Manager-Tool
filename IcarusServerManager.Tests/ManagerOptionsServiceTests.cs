@@ -78,7 +78,7 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         Assert.Equal(20000, loaded.LaunchGamePort);
         Assert.Equal(27020, loaded.LaunchQueryPort);
         Assert.Equal(@"C:\logs\icarus.log", loaded.LaunchLogPath);
-        Assert.Equal(6, loaded.OptionsSchemaVersion);
+        Assert.Equal(8, loaded.OptionsSchemaVersion);
     }
 
     [Fact]
@@ -88,5 +88,40 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
         Assert.Equal("Dark", o.Theme);
+    }
+
+    [Fact]
+    public void Save_ThenLoad_RoundTripsDiscordBehaviorOptions()
+    {
+        var svc = new ManagerOptionsService(_path);
+        var original = new ManagerOptions
+        {
+            DiscordWebhookUseTitleEmojis = false,
+            DiscordWebhookShowEmbedAuthor = false,
+            DiscordWebhookShowEmbedTimestamp = false,
+            DiscordWebhookShowPortsOnEmbeds = false,
+            DiscordWebhookShowSessionOnEmbeds = false,
+            DiscordWebhookIncludeProspectOnStart = false,
+            DiscordWebhookHeartbeatShowPolicyLine = false,
+            DiscordWebhookUseThemedLabels = false,
+            DiscordWebhookPlainTextDescriptions = true,
+            DiscordWebhookCustomFooter = "Custom footer line",
+            DiscordWebhookDescriptionMaxChars = 1200
+        };
+        svc.Save(original);
+
+        var loaded = svc.Load();
+        Assert.False(loaded.DiscordWebhookUseTitleEmojis);
+        Assert.False(loaded.DiscordWebhookShowEmbedAuthor);
+        Assert.False(loaded.DiscordWebhookShowEmbedTimestamp);
+        Assert.False(loaded.DiscordWebhookShowPortsOnEmbeds);
+        Assert.False(loaded.DiscordWebhookShowSessionOnEmbeds);
+        Assert.False(loaded.DiscordWebhookIncludeProspectOnStart);
+        Assert.False(loaded.DiscordWebhookHeartbeatShowPolicyLine);
+        Assert.False(loaded.DiscordWebhookUseThemedLabels);
+        Assert.True(loaded.DiscordWebhookPlainTextDescriptions);
+        Assert.Equal("Custom footer line", loaded.DiscordWebhookCustomFooter);
+        Assert.Equal(1200, loaded.DiscordWebhookDescriptionMaxChars);
+        Assert.Equal(8, loaded.OptionsSchemaVersion);
     }
 }

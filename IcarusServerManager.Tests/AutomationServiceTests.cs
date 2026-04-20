@@ -110,4 +110,40 @@ public sealed class AutomationServiceTests : IDisposable
         var now = new DateTime(2026, 4, 15, 4, 1, 0);
         Assert.False(svc.IsUpdateDue(o, now));
     }
+
+    [Fact]
+    public void IsUpdateDue_ReturnsFalse_BeforeScheduledTime()
+    {
+        var svc = new AutomationService(_dir);
+        var o = new ManagerOptions { UpdateScheduleEnabled = true, UpdateScheduleTime = "04:00" };
+        var now = new DateTime(2026, 4, 15, 3, 59, 59);
+        Assert.False(svc.IsUpdateDue(o, now));
+    }
+
+    [Fact]
+    public void IsUpdateDue_ReturnsFalse_WhenTimeInvalid()
+    {
+        var svc = new AutomationService(_dir);
+        var o = new ManagerOptions { UpdateScheduleEnabled = true, UpdateScheduleTime = "not-a-time" };
+        var now = new DateTime(2026, 4, 15, 4, 0, 30);
+        Assert.False(svc.IsUpdateDue(o, now));
+    }
+
+    [Fact]
+    public void ImportBundle_ReturnsNull_WhenFileMissing()
+    {
+        var svc = new AutomationService(_dir);
+        var path = Path.Combine(_dir, "missing-bundle.json");
+        Assert.Null(svc.ImportBundle(path));
+    }
+
+    [Fact]
+    public void SaveProfile_SanitizesInvalidFileNameCharacters()
+    {
+        var svc = new AutomationService(_dir);
+        svc.SaveProfile("a/b|c", new DedicatedServerSettingsModel { SteamServerName = "X" }, new ManagerOptions());
+        var loaded = svc.LoadProfile("a_b_c");
+        Assert.NotNull(loaded);
+        Assert.Equal("X", loaded.Value.Settings.SteamServerName);
+    }
 }

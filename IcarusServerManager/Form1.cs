@@ -42,6 +42,8 @@ namespace IcarusServerManager;
     private bool _discordPolicyWarningActive;
     private DateTime? _scheduledUpdateWebhookBucketUtc;
     private const string ReadyForPlayersLogMarker = "IcarusOSSLog: Error: OnResUserTicket : No player found";
+    private const string DiscordIcarusStoreUrl = "https://store.steampowered.com/app/949230/ICARUS/";
+    private const string DiscordManagerBrand = "Icarus Server Manager";
     private DateTime _lastDiscordHeartbeatUtc = DateTime.MinValue;
     private bool _installPathPreviouslyValid = true;
     private bool _suppressConsoleLoggingEvents;
@@ -64,6 +66,7 @@ namespace IcarusServerManager;
     /// <see cref="Control.Controls.Clear"/> — that disposes children and breaks <see cref="LoadPersistedData"/>.
     /// </summary>
     private Panel? _legacyDesignerControlsHost;
+    private Button? _consoleAutoScrollButton;
 
         public Form1()
         {
@@ -74,6 +77,7 @@ namespace IcarusServerManager;
         StartPosition = FormStartPosition.CenterScreen;
         DoubleBuffered = true;
             consoleTextbox.Text = "Initializing...";
+        FormClosing += Form1_FormClosing;
         FormClosed += KillProcess;
     }
 
@@ -227,6 +231,17 @@ namespace IcarusServerManager;
             "Writes console visibility and preset to manager-options.json (same file as Manager Settings → Save).");
         top.Controls.Add(saveLogBtn);
 
+        _consoleAutoScrollButton = new Button
+        {
+            Text = "Follow log: On",
+            AutoSize = true,
+            Margin = new Padding(8, 4, 0, 0),
+            Padding = new Padding(10, 0, 10, 0)
+        };
+        _consoleAutoScrollButton.Click += ConsoleAutoScrollButtonOnClick;
+        UpdateConsoleAutoScrollButtonAppearance();
+        top.Controls.Add(_consoleAutoScrollButton);
+
         var hint = new Label
         {
             Text = "Filters apply to this tab only; disk log files are unchanged.",
@@ -366,6 +381,33 @@ namespace IcarusServerManager;
         logger.Info("Console logging settings saved.");
     }
 
+    private void ConsoleAutoScrollButtonOnClick(object? sender, EventArgs e)
+    {
+        managerOptions.AutoScrollConsole = !managerOptions.AutoScrollConsole;
+        SetControl("AutoScrollConsole", managerOptions.AutoScrollConsole);
+        optionsService.Save(managerOptions);
+        UpdateConsoleAutoScrollButtonAppearance();
+        logger.Info(
+            managerOptions.AutoScrollConsole
+                ? "Console log will follow new output (auto-scroll on)."
+                : "Console log auto-scroll off; view stays put until you turn follow back on.");
+    }
+
+    private void UpdateConsoleAutoScrollButtonAppearance()
+    {
+        if (_consoleAutoScrollButton == null)
+        {
+            return;
+        }
+
+        _consoleAutoScrollButton.Text = managerOptions.AutoScrollConsole ? "Follow log: On" : "Follow log: Off";
+        toolTips.SetToolTip(
+            _consoleAutoScrollButton,
+            "Toggles the same setting as Manager Settings → Auto Scroll Console. " +
+            "When On, new lines jump to the bottom unless you select text or move the caret away from the end (then the view is held so you can read). " +
+            "When Off, the log never scrolls for new lines.");
+    }
+
     private void SettingsTabControlOnSelectedIndexChanged(object? sender, EventArgs e)
     {
         if (settingsTabControl.SelectedTab == _lastWorldTab)
@@ -416,108 +458,230 @@ namespace IcarusServerManager;
         }
     }
 
-    private List<DiscordEmbedField> BuildDiscordServerIdentityFields()
+    private string DiscordSteamServerLabel()
     {
-        var fields = new List<DiscordEmbedField>();
-        var steam = string.IsNullOrWhiteSpace(currentServerSettings.SteamServerName)
-            ? "—"
-            : currentServerSettings.SteamServerName.Trim();
-        fields.Add(new DiscordEmbedField("Steam server name", steam, true));
-        if (!string.IsNullOrWhiteSpace(currentServerSettings.SessionName))
+        var steam = currentServerSettings.SteamServerName.Trim();
+        return string.IsNullOrWhiteSpace(steam) ? "Dedicated server" : steam;
+    }
+
+    private string DiscordFieldServerLabel() =>
+        managerOptions.DiscordWebhookUseThemedLabels ? "Beacon" : "Server";
+
+    private string DiscordFieldPlayerLabel() =>
+        managerOptions.DiscordWebhookUseThemedLabels ? "Crew" : "Player";
+
+    private (string? Name, string? Url) DiscordEmbedAuthorFromOptions() =>
+        managerOptions.DiscordWebhookShowEmbedAuthor
+            ? (DiscordManagerBrand, DiscordIcarusStoreUrl)
+            : ((string?)null, (string?)null);
+
+    private string DiscordCardFooter(string defaultSuffix)
+    {
+        var custom = (managerOptions.DiscordWebhookCustomFooter ?? string.Empty).Trim();
+        if (custom.Length > 0)
+        {
+            return custom.Length > 2048 ? custom[..2048] : custom;
+        }
+
+        return $"{DiscordManagerBrand} · {defaultSuffix}";
+    }
+
+    /// <summary>Minimal card for stops, exits, and manager shutdown — no long field grids.</summary>
+    private DiscordWebhookExtras BuildDiscordLifecycleExtras()
+    {
+        var label = DiscordSteamServerLabel();
+        var fields = new List<DiscordEmbedField>
+        {
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
+        };
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter($"{DateTime.Now:MMM d, HH:mm} local"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
+    }
+
+    /// <summary>Short context for policy / install / SteamCMD style alerts.</summary>
+    private DiscordWebhookExtras BuildDiscordOperationalExtras()
+    {
+        var label = DiscordSteamServerLabel();
+        var fields = new List<DiscordEmbedField>
+        {
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
+        };
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        if (managerOptions.DiscordWebhookShowSessionOnEmbeds &&
+            !string.IsNullOrWhiteSpace(currentServerSettings.SessionName))
         {
             fields.Add(new DiscordEmbedField("Session", currentServerSettings.SessionName.Trim(), true));
         }
 
-        var sum = TryReadProspectSummaryForDiscord();
-        if (sum != null)
-        {
-            var worldLabel = string.IsNullOrWhiteSpace(sum.ProspectId) ? sum.BaseName : sum.ProspectId.Trim();
-            fields.Add(new DiscordEmbedField("Prospect / world", worldLabel, true));
-            fields.Add(new DiscordEmbedField("Map preset", sum.ProspectDtKey ?? "—", true));
-            fields.Add(new DiscordEmbedField("Save state", sum.ProspectState ?? "—", true));
-            if (!string.IsNullOrWhiteSpace(sum.Difficulty))
-            {
-                fields.Add(new DiscordEmbedField("Difficulty", sum.Difficulty!, true));
-            }
-
-            if (sum.ElapsedGameMinutes is int em)
-            {
-                fields.Add(new DiscordEmbedField("Elapsed (save)", $"{em} min", true));
-            }
-
-            fields.Add(new DiscordEmbedField("Members in save", $"{sum.Members.Count} (playing: {sum.OnlineMemberCount})", true));
-        }
-        else
-        {
-            var lp = currentServerSettings.LastProspectName.Trim();
-            fields.Add(new DiscordEmbedField("Last prospect", string.IsNullOrEmpty(lp) ? "—" : lp, true));
-        }
-
-        fields.Add(new DiscordEmbedField("Ports (game / query)", $"{managerOptions.LaunchGamePort} / {managerOptions.LaunchQueryPort}", true));
-        fields.Add(new DiscordEmbedField("Max players", currentServerSettings.MaxPlayers.ToString(), true));
-        fields.Add(new DiscordEmbedField("Players (log hints)", playerTracker.HintNames.Count.ToString(), true));
-        var cs = currentServerSettings;
-        var launchBits = new List<string>();
-        if (!string.IsNullOrWhiteSpace(cs.LoadProspect))
-        {
-            launchBits.Add($"Load `{cs.LoadProspect.Trim()}`");
-        }
-
-        if (cs.ResumeProspect)
-        {
-            launchBits.Add("Resume");
-        }
-
-        if (!string.IsNullOrWhiteSpace(cs.CreateProspect))
-        {
-            launchBits.Add($"Create `{cs.CreateProspect.Trim()}`");
-        }
-
-        if (launchBits.Count > 0)
-        {
-            fields.Add(new DiscordEmbedField("Prospect startup", string.Join(" · ", launchBits), false));
-        }
-
-        return fields;
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("ops feed"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
     }
 
-    private DiscordWebhookExtras BuildDiscordServerIdentityExtras() =>
-        new(BuildDiscordServerIdentityFields(), null);
+    /// <summary>INI and other diagnostics: compact facts, leave stack traces in the message body.</summary>
+    private DiscordWebhookExtras BuildDiscordDiagnosticExtras()
+    {
+        var label = DiscordSteamServerLabel();
+        var fields = new List<DiscordEmbedField>
+        {
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
+        };
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        if (managerOptions.DiscordWebhookShowSessionOnEmbeds &&
+            !string.IsNullOrWhiteSpace(currentServerSettings.SessionName))
+        {
+            fields.Add(new DiscordEmbedField("Session", currentServerSettings.SessionName.Trim(), true));
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("diagnostic"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
+    }
 
     private DiscordWebhookExtras BuildDiscordHeartbeatExtras()
     {
+        var label = DiscordSteamServerLabel();
+        var uptime = serverStarted ? (DateTime.Now - startTime).ToString(@"d\.hh\:mm\:ss", System.Globalization.CultureInfo.InvariantCulture) : "—";
+        var reason = string.IsNullOrWhiteSpace(lastRestartReason)
+            ? "—"
+            : (lastRestartReason.Trim().Length > 220 ? lastRestartReason.Trim()[..220] + "…" : lastRestartReason.Trim());
         var fields = new List<DiscordEmbedField>
         {
-            new("Process running", serverStarted ? "Yes" : "No", true),
-            new(
-                "Approx. uptime",
-                serverStarted ? (DateTime.Now - startTime).ToString(@"d\.hh\:mm\:ss") : "n/a",
-                true),
-            new(
-                "Last restart reason",
-                string.IsNullOrWhiteSpace(lastRestartReason) ? "—" : lastRestartReason.Trim().Length > 500
-                    ? lastRestartReason.Trim()[..500] + "…"
-                    : lastRestartReason.Trim(),
-                false)
+            new DiscordEmbedField("Game process", serverStarted ? "● Online" : "○ Idle", true),
+            new DiscordEmbedField("Uptime", uptime, true),
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
         };
-        fields.AddRange(BuildDiscordServerIdentityFields());
-        return new DiscordWebhookExtras(fields, null);
+        if (managerOptions.DiscordWebhookHeartbeatShowPolicyLine)
+        {
+            fields.Add(new DiscordEmbedField("Last policy note", reason, false));
+        }
+
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("heartbeat"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
     }
 
-    private static DiscordWebhookExtras BuildDiscordMinimalServerTag(string steamServerName)
+    private DiscordWebhookExtras BuildDiscordLaunchExtras()
+    {
+        var label = DiscordSteamServerLabel();
+        var sum = TryReadProspectSummaryForDiscord();
+        var fields = new List<DiscordEmbedField>
+        {
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
+        };
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        if (managerOptions.DiscordWebhookIncludeProspectOnStart)
+        {
+            if (sum != null)
+            {
+                var world = string.IsNullOrWhiteSpace(sum.ProspectId) ? sum.BaseName : sum.ProspectId.Trim();
+                fields.Add(new DiscordEmbedField("Prospect", world, true));
+            }
+            else if (!string.IsNullOrWhiteSpace(currentServerSettings.LastProspectName.Trim()))
+            {
+                fields.Add(new DiscordEmbedField("Prospect", currentServerSettings.LastProspectName.Trim(), true));
+            }
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("live"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
+    }
+
+    private DiscordWebhookExtras BuildDiscordMinimalServerTag(string steamServerName)
     {
         var steam = string.IsNullOrWhiteSpace(steamServerName) ? "—" : steamServerName.Trim();
-        return new DiscordWebhookExtras(new[] { new DiscordEmbedField("Steam server", steam, true) }, null);
+        var fields = new List<DiscordEmbedField>
+        {
+            new DiscordEmbedField(DiscordFieldServerLabel(), steam, true)
+        };
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("log hint"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
     }
 
     private DiscordWebhookExtras BuildDiscordPlayerEventExtras(string playerName)
     {
+        var label = DiscordSteamServerLabel();
         var fields = new List<DiscordEmbedField>
         {
-            new("Player", playerName.Trim(), false)
+            new DiscordEmbedField(DiscordFieldPlayerLabel(), playerName.Trim(), false),
+            new DiscordEmbedField(DiscordFieldServerLabel(), label, false)
         };
-        fields.AddRange(BuildDiscordServerIdentityFields());
-        return new DiscordWebhookExtras(fields, null);
+        if (managerOptions.DiscordWebhookShowPortsOnEmbeds)
+        {
+            fields.Add(new DiscordEmbedField("Ports", $"{managerOptions.LaunchGamePort} · {managerOptions.LaunchQueryPort}", true));
+        }
+
+        var author = DiscordEmbedAuthorFromOptions();
+        return new DiscordWebhookExtras(
+            fields,
+            FooterText: DiscordCardFooter("roster"),
+            AuthorName: author.Name,
+            AuthorUrl: author.Url);
+    }
+
+    private string TruncateDiscordDescription(string s, int? hardCap = null)
+    {
+        if (string.IsNullOrEmpty(s))
+        {
+            return string.Empty;
+        }
+
+        var cap = Math.Clamp(managerOptions.DiscordWebhookDescriptionMaxChars, 800, 4096);
+        if (hardCap is int h)
+        {
+            cap = Math.Min(cap, h);
+        }
+
+        s = s.Replace("\r\n", "\n", StringComparison.Ordinal);
+        return s.Length <= cap ? s : s[..cap] + "…";
     }
 
     private void RefreshLastWorldTab()
@@ -791,6 +955,8 @@ namespace IcarusServerManager;
         AddNumericField(panel, "High Memory Threshold (MB)", "HighMemoryMbThreshold", 256, 65536, 8000);
         AddNumericField(panel, "High Memory Sustain Minutes", "HighMemorySustainMinutes", 1, 240, 5);
         AddNumericField(panel, "High Memory Warning Minutes", "HighMemoryWarningMinutes", 0, 120, 2);
+        AddCheckField(panel, "Try Ctrl+C on stop (Windows)", "GracefulShutdownTryCtrlC", true);
+        AddNumericField(panel, "Graceful shutdown max wait (sec)", "GracefulShutdownWaitSeconds", 10, 900, 120);
         AddTextField(panel, "UserDir Override", "UserDirOverride");
         AddTextField(panel, "SavedDirSuffix", "SavedDirSuffix");
         AddCheckField(panel, "Enable Discord Webhook", "EnableDiscordWebhook", false);
@@ -823,6 +989,25 @@ namespace IcarusServerManager;
         AddNumericField(panel, "Gameplay webhook min interval (sec, 0=off)", "DiscordWebhookGameplayThrottleSeconds", 0, 120, 5);
         AddNumericField(panel, "Heartbeat webhook interval (hours, 0=off)", "DiscordWebhookHeartbeatIntervalHours", 0, 168, 0);
         AddCheckField(panel, "Discord: use embeds (richer cards)", "DiscordWebhookUseEmbeds", true);
+        var discordBehaviorHeading = new Label
+        {
+            Text = "Discord message & embed behavior",
+            AutoSize = true,
+            Font = new Font(panel.Font, FontStyle.Bold),
+            Margin = new Padding(0, 10, 0, 0)
+        };
+        panel.Controls.Add(discordBehaviorHeading);
+        AddCheckField(panel, "Discord: title emojis", "DiscordWebhookUseTitleEmojis", true);
+        AddCheckField(panel, "Discord: embed author (name + store link)", "DiscordWebhookShowEmbedAuthor", true);
+        AddCheckField(panel, "Discord: embed UTC timestamp", "DiscordWebhookShowEmbedTimestamp", true);
+        AddCheckField(panel, "Discord: show game/query ports on cards", "DiscordWebhookShowPortsOnEmbeds", true);
+        AddCheckField(panel, "Discord: show session name when set", "DiscordWebhookShowSessionOnEmbeds", true);
+        AddCheckField(panel, "Discord: prospect line on server-ready", "DiscordWebhookIncludeProspectOnStart", true);
+        AddCheckField(panel, "Discord: policy line on heartbeat", "DiscordWebhookHeartbeatShowPolicyLine", true);
+        AddCheckField(panel, "Discord: themed field names (Beacon / Crew)", "DiscordWebhookUseThemedLabels", true);
+        AddCheckField(panel, "Discord: plain descriptions (strip emphasis)", "DiscordWebhookPlainTextDescriptions", false);
+        AddTextField(panel, "Discord custom footer (empty = default)", "DiscordWebhookCustomFooter");
+        AddNumericField(panel, "Discord description max length", "DiscordWebhookDescriptionMaxChars", 800, 4096, 3500);
         AddTextField(panel, "Discord override username (optional)", "DiscordWebhookUsername");
         AddTextField(panel, "Discord override avatar URL (optional)", "DiscordWebhookAvatarUrl");
         AddCheckField(panel, "Auto Scroll Console", "AutoScrollConsole", true);
@@ -842,6 +1027,20 @@ namespace IcarusServerManager;
             {
                 managerControls[key] = c;
             }
+        }
+
+        if (managerControls.TryGetValue("GracefulShutdownTryCtrlC", out var ctrlCField) && ctrlCField is CheckBox ctrlCBox)
+        {
+            toolTips.SetToolTip(
+                ctrlCBox,
+                "When enabled, the manager tries Windows console Ctrl+C before sending quit/exit on stdin. Disable to send quit/exit immediately (faster when Ctrl+C never works).");
+        }
+
+        if (managerControls.TryGetValue("GracefulShutdownWaitSeconds", out var waitField) && waitField is NumericUpDown waitNum)
+        {
+            toolTips.SetToolTip(
+                waitNum,
+                "Maximum time to wait for the server process to exit after stop before forcing termination.");
         }
     }
 
@@ -1041,11 +1240,11 @@ namespace IcarusServerManager;
         }
 
         _lastDiscordHeartbeatUtc = now;
-        PostDiscordWebhook(
-            DiscordWebhookEventKind.ManagerHeartbeat,
-            "Manager heartbeat",
-            "Periodic status from the manager (not the game binary).",
-            BuildDiscordHeartbeatExtras());
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.ManagerHeartbeat,
+                "Still here",
+                "_Quiet pulse from the manager — game state is in the fields below._",
+                BuildDiscordHeartbeatExtras());
     }
 
     private void LoadPersistedData()
@@ -1147,6 +1346,8 @@ namespace IcarusServerManager;
         SetControl("HighMemoryMbThreshold", managerOptions.HighMemoryMbThreshold);
         SetControl("HighMemorySustainMinutes", managerOptions.HighMemorySustainMinutes);
         SetControl("HighMemoryWarningMinutes", managerOptions.HighMemoryWarningMinutes);
+        SetControl("GracefulShutdownTryCtrlC", managerOptions.GracefulShutdownTryCtrlC);
+        SetControl("GracefulShutdownWaitSeconds", managerOptions.GracefulShutdownWaitSeconds);
         SetControl("UserDirOverride", managerOptions.UserDirOverride);
         SetControl("SavedDirSuffix", managerOptions.SavedDirSuffix);
         SetControl("EnableDiscordWebhook", managerOptions.EnableDiscordWebhook);
@@ -1172,6 +1373,17 @@ namespace IcarusServerManager;
         SetControl("DiscordWebhookGameplayThrottleSeconds", managerOptions.DiscordWebhookGameplayThrottleSeconds);
         SetControl("DiscordWebhookHeartbeatIntervalHours", managerOptions.DiscordWebhookHeartbeatIntervalHours);
         SetControl("DiscordWebhookUseEmbeds", managerOptions.DiscordWebhookUseEmbeds);
+        SetControl("DiscordWebhookUseTitleEmojis", managerOptions.DiscordWebhookUseTitleEmojis);
+        SetControl("DiscordWebhookShowEmbedAuthor", managerOptions.DiscordWebhookShowEmbedAuthor);
+        SetControl("DiscordWebhookShowEmbedTimestamp", managerOptions.DiscordWebhookShowEmbedTimestamp);
+        SetControl("DiscordWebhookShowPortsOnEmbeds", managerOptions.DiscordWebhookShowPortsOnEmbeds);
+        SetControl("DiscordWebhookShowSessionOnEmbeds", managerOptions.DiscordWebhookShowSessionOnEmbeds);
+        SetControl("DiscordWebhookIncludeProspectOnStart", managerOptions.DiscordWebhookIncludeProspectOnStart);
+        SetControl("DiscordWebhookHeartbeatShowPolicyLine", managerOptions.DiscordWebhookHeartbeatShowPolicyLine);
+        SetControl("DiscordWebhookUseThemedLabels", managerOptions.DiscordWebhookUseThemedLabels);
+        SetControl("DiscordWebhookPlainTextDescriptions", managerOptions.DiscordWebhookPlainTextDescriptions);
+        SetControl("DiscordWebhookCustomFooter", managerOptions.DiscordWebhookCustomFooter);
+        SetControl("DiscordWebhookDescriptionMaxChars", managerOptions.DiscordWebhookDescriptionMaxChars);
         SetControl("DiscordWebhookUsername", managerOptions.DiscordWebhookUsername);
         SetControl("DiscordWebhookAvatarUrl", managerOptions.DiscordWebhookAvatarUrl);
         SetControl("AutoScrollConsole", managerOptions.AutoScrollConsole);
@@ -1181,6 +1393,7 @@ namespace IcarusServerManager;
         SetControl("LaunchQueryPort", managerOptions.LaunchQueryPort);
         SetControl("LaunchLogPath", managerOptions.LaunchLogPath);
         ReflectConsoleLoggingControlsFromModel();
+        UpdateConsoleAutoScrollButtonAppearance();
     }
 
     private void SaveManagerOptionsFromUi(bool isExplicitSave)
@@ -1201,6 +1414,8 @@ namespace IcarusServerManager;
         managerOptions.HighMemoryMbThreshold = GetInt("HighMemoryMbThreshold", 8000);
         managerOptions.HighMemorySustainMinutes = GetInt("HighMemorySustainMinutes", 5);
         managerOptions.HighMemoryWarningMinutes = GetInt("HighMemoryWarningMinutes", 2);
+        managerOptions.GracefulShutdownTryCtrlC = GetBool("GracefulShutdownTryCtrlC", true);
+        managerOptions.GracefulShutdownWaitSeconds = Math.Clamp(GetInt("GracefulShutdownWaitSeconds", 120), 10, 900);
         managerOptions.UserDirOverride = GetString("UserDirOverride", string.Empty);
         managerOptions.SavedDirSuffix = GetString("SavedDirSuffix", string.Empty);
         managerOptions.EnableDiscordWebhook = GetBool("EnableDiscordWebhook", false);
@@ -1226,6 +1441,18 @@ namespace IcarusServerManager;
         managerOptions.DiscordWebhookGameplayThrottleSeconds = Math.Clamp(GetInt("DiscordWebhookGameplayThrottleSeconds", 5), 0, 120);
         managerOptions.DiscordWebhookHeartbeatIntervalHours = Math.Clamp(GetInt("DiscordWebhookHeartbeatIntervalHours", 0), 0, 168);
         managerOptions.DiscordWebhookUseEmbeds = GetBool("DiscordWebhookUseEmbeds", true);
+        managerOptions.DiscordWebhookUseTitleEmojis = GetBool("DiscordWebhookUseTitleEmojis", true);
+        managerOptions.DiscordWebhookShowEmbedAuthor = GetBool("DiscordWebhookShowEmbedAuthor", true);
+        managerOptions.DiscordWebhookShowEmbedTimestamp = GetBool("DiscordWebhookShowEmbedTimestamp", true);
+        managerOptions.DiscordWebhookShowPortsOnEmbeds = GetBool("DiscordWebhookShowPortsOnEmbeds", true);
+        managerOptions.DiscordWebhookShowSessionOnEmbeds = GetBool("DiscordWebhookShowSessionOnEmbeds", true);
+        managerOptions.DiscordWebhookIncludeProspectOnStart = GetBool("DiscordWebhookIncludeProspectOnStart", true);
+        managerOptions.DiscordWebhookHeartbeatShowPolicyLine = GetBool("DiscordWebhookHeartbeatShowPolicyLine", true);
+        managerOptions.DiscordWebhookUseThemedLabels = GetBool("DiscordWebhookUseThemedLabels", true);
+        managerOptions.DiscordWebhookPlainTextDescriptions = GetBool("DiscordWebhookPlainTextDescriptions", false);
+        var footer = GetString("DiscordWebhookCustomFooter", string.Empty).Trim();
+        managerOptions.DiscordWebhookCustomFooter = footer.Length > 2048 ? footer[..2048] : footer;
+        managerOptions.DiscordWebhookDescriptionMaxChars = Math.Clamp(GetInt("DiscordWebhookDescriptionMaxChars", 3500), 800, 4096);
         managerOptions.DiscordWebhookUsername = GetString("DiscordWebhookUsername", string.Empty);
         managerOptions.DiscordWebhookAvatarUrl = GetString("DiscordWebhookAvatarUrl", string.Empty);
         managerOptions.AutoScrollConsole = GetBool("AutoScrollConsole", true);
@@ -1248,6 +1475,8 @@ namespace IcarusServerManager;
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
+
+        UpdateConsoleAutoScrollButtonAppearance();
     }
 
     private void ConfigureStaticTooltips()
@@ -1298,7 +1527,11 @@ namespace IcarusServerManager;
         catch (Exception ex)
         {
             logger.Error("Failed to load INI.", ex);
-            PostDiscordWebhook(DiscordWebhookEventKind.IniLoadFailed, "INI load failed", ex.ToString(), BuildDiscordServerIdentityExtras());
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.IniLoadFailed,
+                "Could not read ServerSettings.ini",
+                TruncateDiscordDescription(ex.ToString()),
+                BuildDiscordDiagnosticExtras());
             MessageBox.Show("Unable to load ServerSettings.ini. Check location and permissions.");
         }
     }
@@ -1333,9 +1566,9 @@ namespace IcarusServerManager;
             {
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.IniValidationFailed,
-                    "INI validation failed",
-                    string.Join(Environment.NewLine, validation.Errors),
-                    BuildDiscordServerIdentityExtras());
+                    "ServerSettings.ini blocked",
+                    TruncateDiscordDescription(string.Join("\n", validation.Errors)),
+                    BuildDiscordDiagnosticExtras());
                 MessageBox.Show(string.Join(Environment.NewLine, validation.Errors), "Validation failed");
                 return;
             }
@@ -1356,7 +1589,11 @@ namespace IcarusServerManager;
         catch (Exception ex)
         {
             logger.Error("Failed saving INI.", ex);
-            PostDiscordWebhook(DiscordWebhookEventKind.IniSaveFailed, "INI save failed", ex.ToString(), BuildDiscordServerIdentityExtras());
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.IniSaveFailed,
+                "Could not write ServerSettings.ini",
+                TruncateDiscordDescription(ex.ToString()),
+                BuildDiscordDiagnosticExtras());
             MessageBox.Show("Unable to save ServerSettings.ini.");
         }
     }
@@ -1689,9 +1926,9 @@ namespace IcarusServerManager;
             logger.Warn("Server process exited unexpectedly.");
             PostDiscordWebhook(
                 DiscordWebhookEventKind.UnexpectedExit,
-                "Server process exited unexpectedly",
-                "The dedicated server process ended without a normal manager stop. Check logs.",
-                BuildDiscordServerIdentityExtras());
+                "Server dropped offline",
+                "*The dedicated server exited on its own.* Check the host and logs when you can.",
+                BuildDiscordLifecycleExtras());
         }
     }
 
@@ -1707,7 +1944,12 @@ namespace IcarusServerManager;
         {
             logger.Info("Stopping server...");
             restartInProgress = true;
-            var exitedGracefully = await RequestGracefulShutdownAsync(proc, TimeSpan.FromSeconds(120)).ConfigureAwait(true);
+            var waitSeconds = Math.Clamp(managerOptions.GracefulShutdownWaitSeconds, 10, 900);
+            var exitedGracefully = await RequestGracefulShutdownAsync(
+                    proc,
+                    TimeSpan.FromSeconds(waitSeconds),
+                    managerOptions.GracefulShutdownTryCtrlC)
+                .ConfigureAwait(true);
             if (!exitedGracefully && !SafeProcessHasExited(proc))
             {
                 logger.Warn("Server did not exit gracefully in time; forcing termination.");
@@ -1751,9 +1993,9 @@ namespace IcarusServerManager;
             {
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.ServerStop,
-                    "Server stopped",
-                    "Dedicated server process was stopped by the manager.",
-                    BuildDiscordServerIdentityExtras());
+                    "Session offline",
+                    "*The manager stopped the dedicated server.*",
+                    BuildDiscordLifecycleExtras());
             }
         }
         catch (Exception ex)
@@ -1779,7 +2021,7 @@ namespace IcarusServerManager;
         }
     }
 
-    private async Task<bool> RequestGracefulShutdownAsync(Process process, TimeSpan totalTimeout)
+    private async Task<bool> RequestGracefulShutdownAsync(Process process, TimeSpan totalTimeout, bool tryCtrlC)
     {
         try
         {
@@ -1790,7 +2032,7 @@ namespace IcarusServerManager;
 
             var deadline = DateTime.UtcNow + totalTimeout;
 
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (tryCtrlC && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 try
                 {
@@ -1808,12 +2050,24 @@ namespace IcarusServerManager;
                     logger.Warn($"Ctrl+C delivery threw: {ex.Message}");
                 }
             }
-
-            // Give the dedicated server time to flush saves after Ctrl+C before trying stdin.
-            var firstPhaseEnd = DateTime.UtcNow + TimeSpan.FromSeconds(45);
-            if (firstPhaseEnd > deadline)
+            else if (!tryCtrlC)
             {
-                firstPhaseEnd = deadline;
+                logger.Info("Ctrl+C skipped by manager option; using stdin quit/exit when available.");
+            }
+
+            // After Ctrl+C (when enabled), allow time to flush saves before stdin. When Ctrl+C is disabled, go to stdin immediately.
+            DateTime firstPhaseEnd;
+            if (tryCtrlC)
+            {
+                firstPhaseEnd = DateTime.UtcNow + TimeSpan.FromSeconds(45);
+                if (firstPhaseEnd > deadline)
+                {
+                    firstPhaseEnd = deadline;
+                }
+            }
+            else
+            {
+                firstPhaseEnd = DateTime.UtcNow;
             }
 
             while (DateTime.UtcNow < firstPhaseEnd)
@@ -1933,9 +2187,9 @@ namespace IcarusServerManager;
             ApplyTheme();
             PostDiscordWebhook(
                 DiscordWebhookEventKind.ServerStop,
-                "Server force-killed",
-                "Dedicated server process was terminated immediately (no graceful shutdown).",
-                BuildDiscordServerIdentityExtras());
+                "Hard stop",
+                "*The server process was killed immediately* — saves may not have flushed.",
+                BuildDiscordLifecycleExtras());
         }
         finally
         {
@@ -1989,9 +2243,9 @@ namespace IcarusServerManager;
         await automationService.SendWebhookEventAsync(
             managerOptions,
             DiscordWebhookEventKind.ServerRestart,
-            "Automated server restart",
-            reason,
-            BuildDiscordServerIdentityExtras()).ConfigureAwait(true);
+            "Restart cycle",
+            TruncateDiscordDescription(reason),
+            BuildDiscordOperationalExtras()).ConfigureAwait(true);
         await StopProcessAsync(isRestartOperation: true).ConfigureAwait(true);
         await Task.Delay(1500).ConfigureAwait(true);
         StartProcess();
@@ -2000,9 +2254,9 @@ namespace IcarusServerManager;
         {
             PostDiscordWebhook(
                 DiscordWebhookEventKind.ServerRestartFailed,
-                "Restart did not reach running state",
-                reason,
-                BuildDiscordServerIdentityExtras());
+                "Restart did not come back online",
+                TruncateDiscordDescription(reason),
+                BuildDiscordOperationalExtras());
         }
     }
 
@@ -2026,9 +2280,9 @@ namespace IcarusServerManager;
                 _discordPolicyWarningActive = true;
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.RestartWarning,
-                    "Restart / resource warning",
-                    decision.Reason,
-                    BuildDiscordServerIdentityExtras());
+                    "Heads-up",
+                    TruncateDiscordDescription(decision.Reason),
+                    BuildDiscordOperationalExtras());
             }
         }
         else
@@ -2170,11 +2424,11 @@ namespace IcarusServerManager;
                 _scheduledUpdateWebhookBucketUtc = bucket;
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.ScheduledUpdateWindow,
-                    "Scheduled update window",
+                    "Update window",
                     serverStarted
-                        ? "Update schedule matched; server will be restarted if policies allow."
-                        : "Update schedule matched; server was not running.",
-                    BuildDiscordServerIdentityExtras());
+                        ? "*Scheduled time hit* — a restart will run if your policies allow it."
+                        : "*Scheduled time hit* — the server was already idle.",
+                    BuildDiscordOperationalExtras());
             }
         }
 
@@ -2374,9 +2628,9 @@ namespace IcarusServerManager;
         {
             PostDiscordWebhook(
                 DiscordWebhookEventKind.InstallPathIssue,
-                "Dedicated server executable not found",
-                exe,
-                BuildDiscordServerIdentityExtras());
+                "Game binary missing",
+                TruncateDiscordDescription(exe),
+                BuildDiscordOperationalExtras());
         }
 
         _installPathPreviouslyValid = valid;
@@ -2409,8 +2663,8 @@ namespace IcarusServerManager;
             PostDiscordWebhook(
                 DiscordWebhookEventKind.SteamCmdFinished,
                 exitCode == 0 ? "SteamCMD finished" : "SteamCMD reported failure",
-                $"Exit code: {exitCode}",
-                BuildDiscordServerIdentityExtras());
+                exitCode == 0 ? "*Install or update step completed.*" : $"*Exit code* `{exitCode}`",
+                BuildDiscordOperationalExtras());
             installServerButton.Enabled = false;
             startServerButton.Enabled = true;
             UpdateStatus("Idle");
@@ -2424,8 +2678,8 @@ namespace IcarusServerManager;
             PostDiscordWebhook(
                 DiscordWebhookEventKind.SteamCmdFinished,
                 "SteamCMD install/update failed",
-                ex.ToString(),
-                BuildDiscordServerIdentityExtras());
+                TruncateDiscordDescription(ex.ToString()),
+                BuildDiscordDiagnosticExtras());
             MessageBox.Show("Install/update failed. See logs for details.");
         }
         }
@@ -2442,30 +2696,155 @@ namespace IcarusServerManager;
             }
         }
 
-    private void KillProcess(object? o, EventArgs e)
+    private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
     {
+        var proc = serverProc;
+        if (!serverStarted || proc == null || SafeProcessHasExited(proc))
+        {
+            return;
+        }
+
+        var interactiveClose = e.CloseReason is CloseReason.UserClosing
+            or CloseReason.ApplicationExitCall
+            or CloseReason.MdiFormClosing
+            or CloseReason.FormOwnerClosing;
+
+        if (interactiveClose)
+        {
+            var confirm = MessageBox.Show(
+                "The dedicated server is still running. Closing the manager will stop the server immediately (not a graceful shutdown). Unsaved progress may be lost.\n\nClose the manager anyway?",
+                "Server is running",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (confirm != DialogResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        SynchronouslyShutdownServerForAppClose(notifyDiscord: interactiveClose);
+    }
+
+    /// <summary>
+    /// Terminates the game process without graceful shutdown. Used when exiting the app; avoids blocking on <see cref="StopProcessAsync"/>.
+    /// </summary>
+    private void SynchronouslyShutdownServerForAppClose(bool notifyDiscord)
+    {
+        var proc = serverProc;
+        if (proc == null)
+        {
+            return;
+        }
+
         try
         {
-            if (serverProc != null && !serverProc.HasExited && serverStarted)
+            if (!SafeProcessHasExited(proc))
             {
-                StopProcessAsync(isRestartOperation: true).GetAwaiter().GetResult();
-            }
-            else if (serverProc != null && !serverProc.HasExited)
-            {
-                serverProc.Kill(true);
+                logger.Warn("Terminating server process because the manager is closing.");
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Could not kill server process on manager exit.", ex);
+                }
+
+                try
+                {
+                    proc.WaitForExit(8000);
+                }
+                catch
+                {
+                    // best-effort
+                }
             }
         }
         catch (Exception ex)
         {
-            logger.Error("Shutdown cleanup failed.", ex);
+            logger.Error("Shutdown cleanup failed while closing manager.", ex);
+        }
+
+        lock (_serverProcDisposeLock)
+        {
+            if (ReferenceEquals(serverProc, proc))
+            {
+                serverProc = null;
+                try
+                {
+                    proc.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Process dispose on manager exit failed: {ex.Message}");
+                }
+            }
+        }
+
+        serverStarted = false;
+        _serverReadyAnnounced = 0;
+        playerTracker.Clear();
+
+        if (notifyDiscord)
+        {
+            PostDiscordWebhook(
+                DiscordWebhookEventKind.ServerStop,
+                "Session offline",
+                "*The manager closed and the server was stopped immediately.*",
+                BuildDiscordLifecycleExtras());
+        }
+    }
+
+    private void KillProcess(object? o, EventArgs e)
+    {
+        try
+        {
+            var proc = serverProc;
+            if (proc == null || SafeProcessHasExited(proc))
+            {
+                return;
+            }
+
+            logger.Warn("Server process still running after close; applying best-effort kill.");
             try
             {
-                serverProc?.Kill(true);
+                proc.Kill(entireProcessTree: true);
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"Final kill on FormClosed failed: {ex.Message}");
+            }
+
+            try
+            {
+                proc.WaitForExit(3000);
             }
             catch
             {
                 // best-effort
             }
+
+            lock (_serverProcDisposeLock)
+            {
+                if (ReferenceEquals(serverProc, proc))
+                {
+                    serverProc = null;
+                    try
+                    {
+                        proc.Dispose();
+                    }
+                    catch
+                    {
+                        // best-effort
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Error("FormClosed process cleanup failed.", ex);
         }
     }
 
@@ -2484,9 +2863,9 @@ namespace IcarusServerManager;
             UpdateStatus("Running (Ready for players)");
             PostDiscordWebhook(
                 DiscordWebhookEventKind.ServerStart,
-                "Server ready for players",
-                "Readiness marker detected in startup logs: `OnResUserTicket : No player found`.",
-                BuildDiscordServerIdentityExtras());
+                "Drop zone is live",
+                "**Players can join** — the server reported readiness in its log.",
+                BuildDiscordLaunchExtras());
         }
 
         var playerLine = playerTracker.ProcessLogLine(line);
@@ -2495,15 +2874,15 @@ namespace IcarusServerManager;
             case PlayerLogHintKind.Joined when !string.IsNullOrWhiteSpace(playerLine.PlayerName):
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.PlayerJoin,
-                    "Player joined",
-                    $"**{playerLine.PlayerName}** connected (from server log).",
+                    "Crew inbound",
+                    $"**{playerLine.PlayerName}** *is on approach (log hint).*",
                     BuildDiscordPlayerEventExtras(playerLine.PlayerName));
                 break;
             case PlayerLogHintKind.Left when !string.IsNullOrWhiteSpace(playerLine.PlayerName):
                 PostDiscordWebhook(
                     DiscordWebhookEventKind.PlayerLeave,
-                    "Player left",
-                    $"**{playerLine.PlayerName}** disconnected (from server log).",
+                    "Crew outbound",
+                    $"**{playerLine.PlayerName}** *signed off (log hint).*",
                     BuildDiscordPlayerEventExtras(playerLine.PlayerName));
                 break;
         }
@@ -2512,24 +2891,24 @@ namespace IcarusServerManager;
         {
             PostDiscordWebhook(
                 DiscordWebhookEventKind.Chat,
-                "Possible chat / say line",
-                line,
+                "Comms intercept",
+                TruncateDiscordDescription(line, 2000),
                 BuildDiscordMinimalServerTag(currentServerSettings.SteamServerName));
         }
         else if (ServerLogGameplayHeuristic.LooksLikeLevelUp(line, playerLine))
         {
             PostDiscordWebhook(
                 DiscordWebhookEventKind.LevelUp,
-                "Possible level / XP line",
-                line,
+                "Progress ping",
+                TruncateDiscordDescription(line, 2000),
                 BuildDiscordMinimalServerTag(currentServerSettings.SteamServerName));
         }
         else if (ServerLogGameplayHeuristic.LooksLikePlayerDeath(line, playerLine))
         {
             PostDiscordWebhook(
                 DiscordWebhookEventKind.PlayerDeath,
-                "Possible player death line",
-                line,
+                "Hazard ping",
+                TruncateDiscordDescription(line, 2000),
                 BuildDiscordMinimalServerTag(currentServerSettings.SteamServerName));
         }
 

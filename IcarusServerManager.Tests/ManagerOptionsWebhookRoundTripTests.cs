@@ -57,6 +57,6 @@ public sealed class ManagerOptionsWebhookRoundTripTests : IDisposable
         Assert.True(loaded.DiscordWebhookNotifyLevelUp);
         Assert.Equal(7, loaded.DiscordWebhookGameplayThrottleSeconds);
         Assert.Equal(12, loaded.DiscordWebhookHeartbeatIntervalHours);
-        Assert.Equal(6, loaded.OptionsSchemaVersion);
+        Assert.Equal(8, loaded.OptionsSchemaVersion);
     }
 }

@@ -78,7 +78,7 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         Assert.Equal(20000, loaded.LaunchGamePort);
         Assert.Equal(27020, loaded.LaunchQueryPort);
         Assert.Equal(@"C:\logs\icarus.log", loaded.LaunchLogPath);
-        Assert.Equal(8, loaded.OptionsSchemaVersion);
+        Assert.Equal(9, loaded.OptionsSchemaVersion);
     }
 
     [Fact]
@@ -122,6 +122,6 @@ public sealed class ManagerOptionsServiceTests : IDisposable
         Assert.True(loaded.DiscordWebhookPlainTextDescriptions);
         Assert.Equal("Custom footer line", loaded.DiscordWebhookCustomFooter);
         Assert.Equal(1200, loaded.DiscordWebhookDescriptionMaxChars);
-        Assert.Equal(8, loaded.OptionsSchemaVersion);
+        Assert.Equal(9, loaded.OptionsSchemaVersion);
     }
 }

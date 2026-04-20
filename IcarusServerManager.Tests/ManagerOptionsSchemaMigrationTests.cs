@@ -42,7 +42,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.Equal(9, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -57,7 +57,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.Equal(9, o.OptionsSchemaVersion);
         Assert.False(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -72,7 +72,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.Equal(9, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyUnexpectedExit);
         Assert.True(o.DiscordWebhookNotifyServerStop);
     }
@@ -88,7 +88,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.Equal(9, o.OptionsSchemaVersion);
         Assert.True(o.GracefulShutdownTryCtrlC);
         Assert.Equal(120, o.GracefulShutdownWaitSeconds);
     }
@@ -104,10 +104,29 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.Equal(9, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookUseTitleEmojis);
         Assert.True(o.DiscordWebhookShowEmbedAuthor);
         Assert.True(o.DiscordWebhookShowEmbedTimestamp);
         Assert.Equal(3500, o.DiscordWebhookDescriptionMaxChars);
+    }
+
+    [Fact]
+    public void Load_MigratesSchemaV9_SetsManagerUpdateDefaults()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 8,
+              "ManagerUpdateCheckEnabled": false,
+              "ManagerUpdateCheckIntervalHours": 1000
+            }
+            """);
+        var svc = new ManagerOptionsService(_path);
+        var o = svc.Load();
+        Assert.Equal(9, o.OptionsSchemaVersion);
+        Assert.True(o.ManagerUpdateCheckEnabled);
+        Assert.Equal(6, o.ManagerUpdateCheckIntervalHours);
+        Assert.False(o.ManagerUpdateIncludePrerelease);
+        Assert.True(o.ManagerUpdatePromptBeforeDownload);
     }
 }

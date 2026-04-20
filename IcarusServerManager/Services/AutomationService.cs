@@ -200,9 +200,9 @@ internal sealed class AutomationService
             DiscordWebhookEventKind.PlayerLeave => "🟠",
             DiscordWebhookEventKind.ServerRestart => "🔄",
             DiscordWebhookEventKind.ServerRestartFailed => "⛔",
-            DiscordWebhookEventKind.ServerStart => "🚀",
-            DiscordWebhookEventKind.ServerStop => "🛑",
-            DiscordWebhookEventKind.UnexpectedExit => "💥",
+            DiscordWebhookEventKind.ServerStart => "🛰️",
+            DiscordWebhookEventKind.ServerStop => "🌙",
+            DiscordWebhookEventKind.UnexpectedExit => "⚡",
             DiscordWebhookEventKind.Chat => "💬",
             DiscordWebhookEventKind.RestartWarning => "⚠️",
             DiscordWebhookEventKind.ScheduledUpdateWindow => "📅",
@@ -213,21 +213,21 @@ internal sealed class AutomationService
             DiscordWebhookEventKind.LevelUp => "⭐",
             DiscordWebhookEventKind.PlayerDeath => "☠️",
             DiscordWebhookEventKind.InstallPathIssue => "📂",
-            DiscordWebhookEventKind.ManagerHeartbeat => "💓",
+            DiscordWebhookEventKind.ManagerHeartbeat => "💠",
             _ => "📡"
         };
 
     private static int EmbedColorFor(DiscordWebhookEventKind kind) =>
         kind switch
         {
-            DiscordWebhookEventKind.PlayerJoin => 0x2ecc71,
+            DiscordWebhookEventKind.PlayerJoin => 0x1abc9c,
             DiscordWebhookEventKind.PlayerLeave => 0xe67e22,
-            DiscordWebhookEventKind.ServerRestart => 0x9b59b6,
+            DiscordWebhookEventKind.ServerRestart => 0x8e44ad,
             DiscordWebhookEventKind.ServerRestartFailed => 0xc0392b,
             DiscordWebhookEventKind.ServerStart => 0x3498db,
-            DiscordWebhookEventKind.ServerStop => 0xe74c3c,
-            DiscordWebhookEventKind.UnexpectedExit => 0x992d22,
-            DiscordWebhookEventKind.Chat => 0x95a5a6,
+            DiscordWebhookEventKind.ServerStop => 0x6c5ce7,
+            DiscordWebhookEventKind.UnexpectedExit => 0xe74c3c,
+            DiscordWebhookEventKind.Chat => 0x7f8c8d,
             DiscordWebhookEventKind.RestartWarning => 0xf39c12,
             DiscordWebhookEventKind.ScheduledUpdateWindow => 0x1abc9c,
             DiscordWebhookEventKind.SteamCmdFinished => 0x16a085,
@@ -235,29 +235,72 @@ internal sealed class AutomationService
             DiscordWebhookEventKind.IniValidationFailed => 0xe67e22,
             DiscordWebhookEventKind.IniLoadFailed => 0xe67e22,
             DiscordWebhookEventKind.LevelUp => 0xf1c40f,
-            DiscordWebhookEventKind.PlayerDeath => 0x7f8c8d,
+            DiscordWebhookEventKind.PlayerDeath => 0x95a5a6,
             DiscordWebhookEventKind.InstallPathIssue => 0xd35400,
             DiscordWebhookEventKind.ManagerHeartbeat => 0x5dade2,
             _ => 0x5865f2
         };
 
-    private static object BuildWebhookPayload(
+    /// <summary>Builds the JSON-serializable webhook body. Internal for unit tests.</summary>
+    internal static object BuildWebhookPayload(
         ManagerOptions o,
         DiscordWebhookEventKind kind,
         string title,
         string? description,
         DiscordWebhookExtras? extras)
     {
-        var emoji = TitleEmojiFor(kind);
+        var descMax = Math.Clamp(o.DiscordWebhookDescriptionMaxChars, 800, 4096);
+        var emoji = o.DiscordWebhookUseTitleEmojis ? TitleEmojiFor(kind) : string.Empty;
         var rawTitle = Truncate(title.Trim(), 250);
-        var t = rawTitle.Length == 0 ? emoji : $"{emoji} {rawTitle}";
-        var desc = string.IsNullOrWhiteSpace(description) ? null : SanitizeForDiscordBody(description, 3500);
+        var t = string.IsNullOrEmpty(emoji)
+            ? (rawTitle.Length == 0 ? "\u200b" : rawTitle)
+            : (rawTitle.Length == 0 ? emoji : $"{emoji} {rawTitle}");
+        var desc = string.IsNullOrWhiteSpace(description)
+            ? null
+            : MaybePlainDiscordDescription(o, SanitizeForDiscordBody(description, descMax));
         var username = string.IsNullOrWhiteSpace(o.DiscordWebhookUsername) ? null : Truncate(o.DiscordWebhookUsername.Trim(), 80);
         var avatarUrl = string.IsNullOrWhiteSpace(o.DiscordWebhookAvatarUrl) ? null : Truncate(o.DiscordWebhookAvatarUrl.Trim(), 512);
         var footerText = string.IsNullOrWhiteSpace(extras?.FooterText)
             ? "Icarus Server Manager"
             : Truncate(extras!.FooterText!.Trim(), 2048);
         object[]? fieldPayload = BuildEmbedFields(extras?.Fields);
+
+        static Dictionary<string, object?>? BuildAuthorBlock(DiscordWebhookExtras? x)
+        {
+            if (x == null || string.IsNullOrWhiteSpace(x.AuthorName))
+            {
+                return null;
+            }
+
+            var author = new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["name"] = Truncate(x.AuthorName.Trim(), 256)
+            };
+            if (!string.IsNullOrWhiteSpace(x.AuthorUrl))
+            {
+                author["url"] = Truncate(x.AuthorUrl.Trim(), 2048);
+            }
+
+            if (!string.IsNullOrWhiteSpace(x.AuthorIconUrl))
+            {
+                author["icon_url"] = Truncate(x.AuthorIconUrl.Trim(), 2048);
+            }
+
+            return author;
+        }
+
+        static Dictionary<string, object?>? BuildThumbnailBlock(DiscordWebhookExtras? x)
+        {
+            if (x == null || string.IsNullOrWhiteSpace(x.ThumbnailUrl))
+            {
+                return null;
+            }
+
+            return new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["url"] = Truncate(x.ThumbnailUrl.Trim(), 2048)
+            };
+        }
 
         if (!o.DiscordWebhookUseEmbeds)
         {
@@ -290,9 +333,25 @@ internal sealed class AutomationService
             ["title"] = Truncate(t, 256),
             ["description"] = string.IsNullOrWhiteSpace(desc) ? "\u200b" : desc,
             ["color"] = EmbedColorFor(kind),
-            ["timestamp"] = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture),
             ["footer"] = new { text = footerText }
         };
+
+        if (o.DiscordWebhookShowEmbedTimestamp)
+        {
+            embed["timestamp"] = DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        var authorBlock = BuildAuthorBlock(extras);
+        if (authorBlock != null)
+        {
+            embed["author"] = authorBlock;
+        }
+
+        var thumbBlock = BuildThumbnailBlock(extras);
+        if (thumbBlock != null)
+        {
+            embed["thumbnail"] = thumbBlock;
+        }
 
         if (fieldPayload is { Length: > 0 })
         {
@@ -344,6 +403,28 @@ internal sealed class AutomationService
     {
         s = s.Replace("```", "`\u200b``", StringComparison.Ordinal);
         return Truncate(s, maxLen);
+    }
+
+    private static string MaybePlainDiscordDescription(ManagerOptions o, string s)
+    {
+        if (!o.DiscordWebhookPlainTextDescriptions || string.IsNullOrEmpty(s))
+        {
+            return s;
+        }
+
+        return StripSimpleMarkdown(s);
+    }
+
+    /// <summary>Best-effort removal of common Discord markdown so channels without formatting still read cleanly.</summary>
+    private static string StripSimpleMarkdown(string s)
+    {
+        var t = s;
+        t = t.Replace("**", "", StringComparison.Ordinal);
+        t = t.Replace("__", "", StringComparison.Ordinal);
+        t = t.Replace("*", "", StringComparison.Ordinal);
+        t = t.Replace("_", "", StringComparison.Ordinal);
+        t = t.Replace("`", "'", StringComparison.Ordinal);
+        return t;
     }
 
     private static string Sanitize(string name)

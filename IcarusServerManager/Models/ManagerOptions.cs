@@ -18,13 +18,20 @@ internal sealed class ManagerOptions
     public int HighMemoryMbThreshold { get; set; } = 8000;
     public int HighMemorySustainMinutes { get; set; } = 5;
     public int HighMemoryWarningMinutes { get; set; } = 2;
+
+    /// <summary>When true, Windows stop sequence tries console Ctrl+C before stdin quit/exit.</summary>
+    public bool GracefulShutdownTryCtrlC { get; set; } = true;
+
+    /// <summary>Max seconds to wait for graceful exit before force kill (clamped in UI).</summary>
+    public int GracefulShutdownWaitSeconds { get; set; } = 120;
+
     public string UserDirOverride { get; set; } = string.Empty;
     public string SavedDirSuffix { get; set; } = string.Empty;
     public bool EnableDiscordWebhook { get; set; }
     public string DiscordWebhookUrl { get; set; } = string.Empty;
 
     /// <summary>Incremented when new option groups are added; used for one-time migration on load.</summary>
-    public int OptionsSchemaVersion { get; set; } = 6;
+    public int OptionsSchemaVersion { get; set; } = 8;
 
     /// <summary>Game port for -Port (manager only; not written to ServerSettings.ini).</summary>
     public int LaunchGamePort { get; set; } = 17777;
@@ -59,6 +66,39 @@ internal sealed class ManagerOptions
     public bool DiscordWebhookNotifyRestartFailed { get; set; }
     /// <summary>Post a status summary on this interval (0 = disabled).</summary>
     public int DiscordWebhookHeartbeatIntervalHours { get; set; }
+
+    /// <summary>Prefix webhook titles with kind emoji (embed and plain modes).</summary>
+    public bool DiscordWebhookUseTitleEmojis { get; set; } = true;
+
+    /// <summary>Show embed author (manager name + store link) on rich cards.</summary>
+    public bool DiscordWebhookShowEmbedAuthor { get; set; } = true;
+
+    /// <summary>Include UTC timestamp on Discord embeds.</summary>
+    public bool DiscordWebhookShowEmbedTimestamp { get; set; } = true;
+
+    /// <summary>Add game/query port field on alert embeds when space allows.</summary>
+    public bool DiscordWebhookShowPortsOnEmbeds { get; set; } = true;
+
+    /// <summary>Include session name on operational / diagnostic embeds when set.</summary>
+    public bool DiscordWebhookShowSessionOnEmbeds { get; set; } = true;
+
+    /// <summary>Include prospect line on server-ready embed when known.</summary>
+    public bool DiscordWebhookIncludeProspectOnStart { get; set; } = true;
+
+    /// <summary>Include last policy / restart reason line on heartbeat embeds.</summary>
+    public bool DiscordWebhookHeartbeatShowPolicyLine { get; set; } = true;
+
+    /// <summary>Use short themed field labels (Beacon, Crew) instead of neutral (Server, Player).</summary>
+    public bool DiscordWebhookUseThemedLabels { get; set; } = true;
+
+    /// <summary>Strip common markdown emphasis from webhook descriptions before send.</summary>
+    public bool DiscordWebhookPlainTextDescriptions { get; set; }
+
+    /// <summary>When non-empty, replaces the default embed footer (max length enforced on save).</summary>
+    public string DiscordWebhookCustomFooter { get; set; } = string.Empty;
+
+    /// <summary>Max characters for webhook body text (clamped in UI and service).</summary>
+    public int DiscordWebhookDescriptionMaxChars { get; set; } = 3500;
 
     /// <summary>Preset name: Minimal, Balanced, Verbose, QuietGame, or Custom.</summary>
     public string ConsoleLogPreset { get; set; } = "Balanced";

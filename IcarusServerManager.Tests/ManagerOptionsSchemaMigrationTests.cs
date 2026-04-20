@@ -42,7 +42,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(6, o.OptionsSchemaVersion);
+        Assert.Equal(8, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -57,7 +57,7 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(6, o.OptionsSchemaVersion);
+        Assert.Equal(8, o.OptionsSchemaVersion);
         Assert.False(o.DiscordWebhookNotifyServerRestart);
     }
 
@@ -72,8 +72,42 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
             """);
         var svc = new ManagerOptionsService(_path);
         var o = svc.Load();
-        Assert.Equal(6, o.OptionsSchemaVersion);
+        Assert.Equal(8, o.OptionsSchemaVersion);
         Assert.True(o.DiscordWebhookNotifyUnexpectedExit);
         Assert.True(o.DiscordWebhookNotifyServerStop);
+    }
+
+    [Fact]
+    public void Load_MigratesSchemaV7_ClampsGracefulShutdownWait()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 6,
+              "GracefulShutdownWaitSeconds": 5
+            }
+            """);
+        var svc = new ManagerOptionsService(_path);
+        var o = svc.Load();
+        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.True(o.GracefulShutdownTryCtrlC);
+        Assert.Equal(120, o.GracefulShutdownWaitSeconds);
+    }
+
+    [Fact]
+    public void Load_MigratesSchemaV8_SetsDiscordBehaviorDefaults()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 7,
+              "DiscordWebhookUseTitleEmojis": false
+            }
+            """);
+        var svc = new ManagerOptionsService(_path);
+        var o = svc.Load();
+        Assert.Equal(8, o.OptionsSchemaVersion);
+        Assert.True(o.DiscordWebhookUseTitleEmojis);
+        Assert.True(o.DiscordWebhookShowEmbedAuthor);
+        Assert.True(o.DiscordWebhookShowEmbedTimestamp);
+        Assert.Equal(3500, o.DiscordWebhookDescriptionMaxChars);
     }
 }

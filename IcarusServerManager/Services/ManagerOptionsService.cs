@@ -82,5 +82,36 @@ internal sealed class ManagerOptionsService
             o.IntervalRestartUseEmptyIdleTimer = false;
             o.OptionsSchemaVersion = 6;
         }
+
+        if (o.OptionsSchemaVersion < 7)
+        {
+            o.GracefulShutdownTryCtrlC = true;
+            if (o.GracefulShutdownWaitSeconds is < 10 or > 900)
+            {
+                o.GracefulShutdownWaitSeconds = 120;
+            }
+
+            o.OptionsSchemaVersion = 7;
+        }
+
+        if (o.OptionsSchemaVersion < 8)
+        {
+            o.DiscordWebhookUseTitleEmojis = true;
+            o.DiscordWebhookShowEmbedAuthor = true;
+            o.DiscordWebhookShowEmbedTimestamp = true;
+            o.DiscordWebhookShowPortsOnEmbeds = true;
+            o.DiscordWebhookShowSessionOnEmbeds = true;
+            o.DiscordWebhookIncludeProspectOnStart = true;
+            o.DiscordWebhookHeartbeatShowPolicyLine = true;
+            o.DiscordWebhookUseThemedLabels = true;
+            o.DiscordWebhookPlainTextDescriptions = false;
+            o.DiscordWebhookCustomFooter ??= string.Empty;
+            if (o.DiscordWebhookDescriptionMaxChars is < 800 or > 4096)
+            {
+                o.DiscordWebhookDescriptionMaxChars = 3500;
+            }
+
+            o.OptionsSchemaVersion = 8;
+        }
     }
 }

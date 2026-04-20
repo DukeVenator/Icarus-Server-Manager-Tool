@@ -31,7 +31,7 @@ internal sealed class ManagerOptions
     public string DiscordWebhookUrl { get; set; } = string.Empty;
 
     /// <summary>Incremented when new option groups are added; used for one-time migration on load.</summary>
-    public int OptionsSchemaVersion { get; set; } = 8;
+    public int OptionsSchemaVersion { get; set; } = 9;
 
     /// <summary>Game port for -Port (manager only; not written to ServerSettings.ini).</summary>
     public int LaunchGamePort { get; set; } = 17777;
@@ -115,6 +115,10 @@ internal sealed class ManagerOptions
     public bool AutoScrollConsole { get; set; } = true;
     public bool UpdateScheduleEnabled { get; set; }
     public string UpdateScheduleTime { get; set; } = "04:00";
+    public bool ManagerUpdateCheckEnabled { get; set; } = true;
+    public int ManagerUpdateCheckIntervalHours { get; set; } = 6;
+    public bool ManagerUpdateIncludePrerelease { get; set; }
+    public bool ManagerUpdatePromptBeforeDownload { get; set; } = true;
     /// <summary>Optional -Log path (manager only; not in ServerSettings.ini).</summary>
     public string LaunchLogPath { get; set; } = string.Empty;
 }

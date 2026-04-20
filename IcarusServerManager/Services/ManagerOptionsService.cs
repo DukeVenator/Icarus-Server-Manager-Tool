@@ -113,5 +113,18 @@ internal sealed class ManagerOptionsService
 
             o.OptionsSchemaVersion = 8;
         }
+
+        if (o.OptionsSchemaVersion < 9)
+        {
+            o.ManagerUpdateCheckEnabled = true;
+            if (o.ManagerUpdateCheckIntervalHours is < 1 or > 168)
+            {
+                o.ManagerUpdateCheckIntervalHours = 6;
+            }
+
+            o.ManagerUpdateIncludePrerelease = false;
+            o.ManagerUpdatePromptBeforeDownload = true;
+            o.OptionsSchemaVersion = 9;
+        }
     }
 }

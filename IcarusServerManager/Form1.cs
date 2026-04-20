@@ -2,6 +2,7 @@ using IcarusServerManager.Models;
 using IcarusServerManager.Services;
 using IcarusServerManager.UI;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -31,6 +32,7 @@ namespace IcarusServerManager;
     private readonly ThemeManager themeManager = new();
     private readonly Logger logger = new();
     private readonly AutomationService automationService = new();
+    private readonly ManagerUpdateService managerUpdateService = new();
     private readonly ServerOutputPlayerTracker playerTracker = new();
 
     private ManagerOptions managerOptions = new();
@@ -44,7 +46,11 @@ namespace IcarusServerManager;
     private const string ReadyForPlayersLogMarker = "IcarusOSSLog: Error: OnResUserTicket : No player found";
     private const string DiscordIcarusStoreUrl = "https://store.steampowered.com/app/949230/ICARUS/";
     private const string DiscordManagerBrand = "Icarus Server Manager";
+    private const string ManagerMainExeName = "IcarusServerManager.exe";
     private DateTime _lastDiscordHeartbeatUtc = DateTime.MinValue;
+    private DateTime _lastManagerUpdateCheckUtc = DateTime.MinValue;
+    private bool _managerUpdateCheckInProgress;
+    private bool _managerUpdatePromptShownThisRun;
     private bool _installPathPreviouslyValid = true;
     private bool _suppressConsoleLoggingEvents;
 
@@ -93,6 +99,7 @@ namespace IcarusServerManager;
         UpdateServerAvailability();
         RunSetupWizardIfNeeded();
         logger.Info("Server manager initialized.");
+        _ = CheckForManagerUpdateAsync(userInitiated: false);
     }
 
     public void WriteToConsole(string text, bool isGameProcessOutput = false)
@@ -1013,6 +1020,13 @@ namespace IcarusServerManager;
         AddCheckField(panel, "Auto Scroll Console", "AutoScrollConsole", true);
         AddCheckField(panel, "Scheduled Update Enabled", "UpdateScheduleEnabled", false);
         AddTextField(panel, "Update Time HH:mm", "UpdateScheduleTime");
+        AddCheckField(panel, "Manager auto-update checks", "ManagerUpdateCheckEnabled", true);
+        AddNumericField(panel, "Manager update check interval (hours)", "ManagerUpdateCheckIntervalHours", 1, 168, 6);
+        AddCheckField(panel, "Manager updates: include prerelease tags", "ManagerUpdateIncludePrerelease", false);
+        AddCheckField(panel, "Manager updates: confirm before download/install", "ManagerUpdatePromptBeforeDownload", true);
+        var checkNowButton = new Button { Text = "Check manager updates now", Width = 220 };
+        checkNowButton.Click += async (_, _) => await CheckForManagerUpdateAsync(userInitiated: true).ConfigureAwait(true);
+        panel.Controls.Add(checkNowButton);
 
         var saveButton = new Button { Text = "Save Manager Options", Width = 180 };
         saveButton.Click += (_, _) => SaveManagerOptionsFromUi(true);
@@ -1199,7 +1213,11 @@ namespace IcarusServerManager;
         updateTimer = new System.Windows.Forms.Timer { Interval = 30000 };
         policyTimer.Tick += (_, _) => EvaluatePolicies();
         metricsTimer.Tick += (_, _) => UpdateStats();
-        updateTimer.Tick += (_, _) => CheckScheduledUpdate();
+        updateTimer.Tick += (_, _) =>
+        {
+            CheckScheduledUpdate();
+            _ = TickManagerUpdateCheckAsync();
+        };
         heartbeatTimer.Tick += (_, _) => HeartbeatDiscordTick();
         policyTimer.Start();
         metricsTimer.Start();
@@ -1389,6 +1407,10 @@ namespace IcarusServerManager;
         SetControl("AutoScrollConsole", managerOptions.AutoScrollConsole);
         SetControl("UpdateScheduleEnabled", managerOptions.UpdateScheduleEnabled);
         SetControl("UpdateScheduleTime", managerOptions.UpdateScheduleTime);
+        SetControl("ManagerUpdateCheckEnabled", managerOptions.ManagerUpdateCheckEnabled);
+        SetControl("ManagerUpdateCheckIntervalHours", managerOptions.ManagerUpdateCheckIntervalHours);
+        SetControl("ManagerUpdateIncludePrerelease", managerOptions.ManagerUpdateIncludePrerelease);
+        SetControl("ManagerUpdatePromptBeforeDownload", managerOptions.ManagerUpdatePromptBeforeDownload);
         SetControl("LaunchGamePort", managerOptions.LaunchGamePort);
         SetControl("LaunchQueryPort", managerOptions.LaunchQueryPort);
         SetControl("LaunchLogPath", managerOptions.LaunchLogPath);
@@ -1458,6 +1480,10 @@ namespace IcarusServerManager;
         managerOptions.AutoScrollConsole = GetBool("AutoScrollConsole", true);
         managerOptions.UpdateScheduleEnabled = GetBool("UpdateScheduleEnabled", false);
         managerOptions.UpdateScheduleTime = GetString("UpdateScheduleTime", "04:00");
+        managerOptions.ManagerUpdateCheckEnabled = GetBool("ManagerUpdateCheckEnabled", true);
+        managerOptions.ManagerUpdateCheckIntervalHours = Math.Clamp(GetInt("ManagerUpdateCheckIntervalHours", 6), 1, 168);
+        managerOptions.ManagerUpdateIncludePrerelease = GetBool("ManagerUpdateIncludePrerelease", false);
+        managerOptions.ManagerUpdatePromptBeforeDownload = GetBool("ManagerUpdatePromptBeforeDownload", true);
         managerOptions.LaunchGamePort = Math.Clamp(GetInt("LaunchGamePort", managerOptions.LaunchGamePort), 1, 65535);
         managerOptions.LaunchQueryPort = Math.Clamp(GetInt("LaunchQueryPort", managerOptions.LaunchQueryPort), 1, 65535);
         managerOptions.LaunchLogPath = GetString("LaunchLogPath", string.Empty);
@@ -2437,6 +2463,182 @@ namespace IcarusServerManager;
         {
             _ = RestartServerAsync("Scheduled update window");
         }
+    }
+
+    private async Task TickManagerUpdateCheckAsync()
+    {
+        if (!managerOptions.ManagerUpdateCheckEnabled)
+        {
+            return;
+        }
+
+        if (_lastManagerUpdateCheckUtc != DateTime.MinValue &&
+            (DateTime.UtcNow - _lastManagerUpdateCheckUtc).TotalHours < managerOptions.ManagerUpdateCheckIntervalHours)
+        {
+            return;
+        }
+
+        await CheckForManagerUpdateAsync(userInitiated: false).ConfigureAwait(true);
+    }
+
+    private async Task CheckForManagerUpdateAsync(bool userInitiated)
+    {
+        if (_managerUpdateCheckInProgress)
+        {
+            return;
+        }
+
+        _managerUpdateCheckInProgress = true;
+        _lastManagerUpdateCheckUtc = DateTime.UtcNow;
+        try
+        {
+            var rel = await managerUpdateService.GetLatestReleaseAsync(managerOptions.ManagerUpdateIncludePrerelease, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (rel == null)
+            {
+                if (userInitiated)
+                {
+                    MessageBox.Show(this, "Could not fetch release information right now.", "Manager updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            var current = GetCurrentManagerVersion();
+            if (!ManagerUpdateService.TryParseTagVersion(rel.TagName, out var latest))
+            {
+                if (userInitiated)
+                {
+                    MessageBox.Show(this, $"Latest release tag is {rel.TagName}.", "Manager updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            if (latest <= current)
+            {
+                if (userInitiated)
+                {
+                    MessageBox.Show(this, $"You're already on the latest version ({current}).", "Manager updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+
+                return;
+            }
+
+            if (_managerUpdatePromptShownThisRun && !userInitiated)
+            {
+                return;
+            }
+
+            _managerUpdatePromptShownThisRun = true;
+            var ask = managerOptions.ManagerUpdatePromptBeforeDownload || userInitiated;
+            if (ask)
+            {
+                var prompt = MessageBox.Show(
+                    this,
+                    $"A newer manager release is available.\n\nCurrent: v{current}\nLatest: {rel.TagName}\n\nDownload, install, and restart now?",
+                    "Manager update available",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information,
+                    MessageBoxDefaultButton.Button1);
+                if (prompt != DialogResult.Yes)
+                {
+                    return;
+                }
+            }
+
+            await DownloadAndInstallManagerUpdateAsync(rel).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Manager update check failed: {ex.Message}");
+            if (userInitiated)
+            {
+                MessageBox.Show(this, $"Update check failed:\n{ex.Message}", "Manager updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+        finally
+        {
+            _managerUpdateCheckInProgress = false;
+        }
+    }
+
+    private static Version GetCurrentManagerVersion()
+    {
+        var v = typeof(Form1).Assembly.GetName().Version;
+        if (v == null)
+        {
+            return new Version(0, 0, 0, 0);
+        }
+
+        return new Version(v.Major, v.Minor, Math.Max(0, v.Build), 0);
+    }
+
+    private async Task DownloadAndInstallManagerUpdateAsync(ManagerReleaseInfo release)
+    {
+        var updaterExe = Path.Combine(AppContext.BaseDirectory, "ManagerUpdater.exe");
+        if (!File.Exists(updaterExe))
+        {
+            MessageBox.Show(
+                this,
+                "ManagerUpdater.exe was not found next to the manager executable. Re-download the full package and try again.",
+                "Manager updates",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        UpdateStatus("Downloading manager update...");
+        logger.Info($"Downloading manager update asset: {release.AssetName}");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "IcarusServerManager-Update", Guid.NewGuid().ToString("N"));
+        var zipPath = Path.Combine(tempRoot, release.AssetName);
+        var extractDir = Path.Combine(tempRoot, "extract");
+        Directory.CreateDirectory(tempRoot);
+        Directory.CreateDirectory(extractDir);
+
+        await managerUpdateService.DownloadAssetAsync(release.DownloadUrl, zipPath, CancellationToken.None).ConfigureAwait(true);
+        ZipFile.ExtractToDirectory(zipPath, extractDir, overwriteFiles: true);
+
+        var extractedExe = Directory.GetFiles(extractDir, ManagerMainExeName, SearchOption.AllDirectories).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(extractedExe))
+        {
+            throw new InvalidOperationException("Downloaded release zip does not contain IcarusServerManager.exe.");
+        }
+
+        var extractedRoot = Path.GetDirectoryName(extractedExe)!;
+        var currentExe = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, ManagerMainExeName);
+        var currentDir = Path.GetDirectoryName(currentExe) ?? AppContext.BaseDirectory;
+        var currentProcId = Environment.ProcessId;
+
+        var args = new[]
+        {
+            "--source", extractedRoot,
+            "--target", currentDir,
+            "--pid", currentProcId.ToString(),
+            "--exe", ManagerMainExeName
+        };
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = updaterExe,
+            WorkingDirectory = currentDir,
+            UseShellExecute = false,
+            Arguments = string.Join(" ", args.Select(QuoteArg))
+        });
+
+        logger.Info($"Launching ManagerUpdater.exe for {release.TagName} and closing manager.");
+        Close();
+    }
+
+    private static string QuoteArg(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+        {
+            return "\"\"";
+        }
+
+        return s.Contains(' ') ? $"\"{s}\"" : s;
     }
 
     private void SetStat(string key, string value)

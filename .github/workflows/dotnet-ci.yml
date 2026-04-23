@@ -6,6 +6,8 @@ on:
       - "**"
     tags-ignore:
       - "v*"
+      - "manager-v*"
+      - "editor-v*"
   pull_request:
   workflow_dispatch:
 

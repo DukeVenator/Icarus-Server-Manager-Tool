@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35806.99 d17.13
@@ -8,6 +8,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IcarusServerManager.Tests", "IcarusServerManager.Tests\IcarusServerManager.Tests.csproj", "{4D84F6AB-11C2-4BAC-8F4E-E593DE9EF8AC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManagerUpdater", "ManagerUpdater\ManagerUpdater.csproj", "{FB32342A-ECC8-4A40-8C37-BD97BF8A8D66}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IcarusProspectEditor", "IcarusProspectEditor\IcarusProspectEditor.csproj", "{A4F9A3A6-AB6D-4431-AACA-3CA443D584AA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{FB32342A-ECC8-4A40-8C37-BD97BF8A8D66}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FB32342A-ECC8-4A40-8C37-BD97BF8A8D66}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FB32342A-ECC8-4A40-8C37-BD97BF8A8D66}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A4F9A3A6-AB6D-4431-AACA-3CA443D584AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A4F9A3A6-AB6D-4431-AACA-3CA443D584AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A4F9A3A6-AB6D-4431-AACA-3CA443D584AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A4F9A3A6-AB6D-4431-AACA-3CA443D584AA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,3 @@
+[submodule "ThirdParty/IcarusSaveLib"]
+	path = ThirdParty/IcarusSaveLib
+	url = https://github.com/CrystalFerrai/IcarusSaveLib.git

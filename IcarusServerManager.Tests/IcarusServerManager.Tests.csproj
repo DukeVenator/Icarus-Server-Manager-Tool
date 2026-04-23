@@ -22,5 +22,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\IcarusServerManager\IcarusServerManager.csproj" />
+    <ProjectReference Include="..\IcarusProspectEditor\IcarusProspectEditor.csproj" />
   </ItemGroup>
 </Project>

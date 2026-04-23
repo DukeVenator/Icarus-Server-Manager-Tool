@@ -24,4 +24,8 @@
     <ProjectReference Include="..\IcarusServerManager\IcarusServerManager.csproj" />
     <ProjectReference Include="..\IcarusProspectEditor\IcarusProspectEditor.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="TestData\**\*.*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

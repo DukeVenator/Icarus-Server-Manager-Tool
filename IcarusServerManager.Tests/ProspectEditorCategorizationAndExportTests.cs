@@ -11,7 +11,7 @@ public sealed class ProspectEditorCategorizationAndExportTests
     [Fact]
     public void Categorization_SeparatesMountsFromCharacters()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
 
         var characterRows = ProspectModelMapper.ReadRecorderRowsByCategory(loaded.Prospect, RecorderCategory.Character);
@@ -26,7 +26,7 @@ public sealed class ProspectEditorCategorizationAndExportTests
     [Fact]
     public void MountRows_AreReadFromProspectRecordersWithoutMountsFile()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
 
         var mounts = ProspectModelMapper.ReadMountsFromProspect(loaded.Prospect);
@@ -38,7 +38,7 @@ public sealed class ProspectEditorCategorizationAndExportTests
     [Fact]
     public void Categorization_AssignsBroadBucketsForKnownComponentFamilies()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
 
         var rows = ProspectModelMapper.ReadRecorderRows(loaded.Prospect, _ => true);
@@ -53,7 +53,7 @@ public sealed class ProspectEditorCategorizationAndExportTests
     [Fact]
     public void MetadataExtraction_ReturnsCategorySpecificFields()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
         var rows = ProspectModelMapper.ReadRecorderRowsByCategory(loaded.Prospect, RecorderCategory.Mount);
         Assert.NotEmpty(rows);
@@ -67,7 +67,7 @@ public sealed class ProspectEditorCategorizationAndExportTests
     [Fact]
     public void DecodedExport_WritesFullJsonStructure()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var tempDir = Directory.CreateTempSubdirectory("decoded-export-tests");
         var tempProspectPath = Path.Combine(tempDir.FullName, "export-source.json");
         File.Copy(sourcePath, tempProspectPath, overwrite: true);
@@ -87,20 +87,4 @@ public sealed class ProspectEditorCategorizationAndExportTests
         Assert.NotEmpty(recorderArray!);
     }
 
-    private static string ResolveWorkspaceFile(string filename)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, filename);
-            var slnCandidate = Path.Combine(dir.FullName, "IcarusServerManager.sln");
-            if (File.Exists(candidate) && File.Exists(slnCandidate))
-            {
-                return candidate;
-            }
-            dir = dir.Parent;
-        }
-
-        throw new FileNotFoundException($"Unable to resolve {filename} from test base directory.");
-    }
 }

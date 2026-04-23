@@ -61,6 +61,8 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 4. Edit values in tabs (Metadata, Members, Custom Settings, Mounts).
 5. Click **Save**.
 
+![Prospect Editor — Metadata tab](screenshots/editor/metadata.png)
+
 ### Important Safety Warning
 
 - Always keep separate backups of your save/prospect files before editing.
@@ -120,6 +122,16 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 - Inspect raw fields (advanced only).
 - Light and dark theme.
 - Built-in update checker for the editor itself.
+
+### Dedicated Mount Editor
+
+Mounts have a dedicated editor with an **Overview** tab for species swaps with preview/validation, a **Genetics** tab with a radar visualization and clamped sliders, a **Talents** tab for reviewing talent ranks, and an **Advanced** tab for raw recorder fields (power-user only).
+
+![Mount Editor — Overview tab with species swap](screenshots/editor/mountwizard.png)
+
+![Mount Editor — Genetics radar view](screenshots/editor/mountradar.png)
+
+More editor views (Members, Characters / Recorder Inspector, Diagnostics, Talents, Raw recorder fields) are documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
 
 ---
 

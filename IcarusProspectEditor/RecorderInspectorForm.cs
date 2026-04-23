@@ -41,6 +41,8 @@ internal sealed class RecorderInspectorForm : Form
         var buttonBar = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft };
         var apply = new Button { Text = "Apply", DialogResult = DialogResult.OK, AutoSize = true };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
+        apply.Click += (_, _) => AppLogService.UserAction($"Recorder inspector apply clicked: {Text}");
+        cancel.Click += (_, _) => AppLogService.UserAction($"Recorder inspector cancel clicked: {Text}");
         buttonBar.Controls.Add(apply);
         buttonBar.Controls.Add(cancel);
         root.Controls.Add(buttonBar, 0, 1);

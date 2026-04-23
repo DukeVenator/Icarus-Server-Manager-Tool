@@ -93,7 +93,7 @@ internal static class TalentIconBundleService
 
         if (KeyMap.TryGetValue(talentName, out var iconKey))
         {
-            var fromKey = Path.Combine(BundleRoot.Value, "icons", $"{iconKey}.webp");
+            var fromKey = Path.Combine(BundleRoot.Value, "icons", $"{iconKey}.png");
             if (File.Exists(fromKey))
             {
                 return fromKey;
@@ -121,7 +121,7 @@ internal static class TalentIconBundleService
                 var mid = rest[..last];
                 if (!string.IsNullOrEmpty(mid))
                 {
-                    var p = Path.Combine(root, "icons", $"T_Talent_Base_{mid}.webp");
+                    var p = Path.Combine(root, "icons", $"T_Talent_Base_{mid}.png");
                     if (File.Exists(p))
                     {
                         return p;
@@ -133,7 +133,7 @@ internal static class TalentIconBundleService
         if (talentName.StartsWith("Creature_", StringComparison.OrdinalIgnoreCase))
         {
             var swapped = "T_Talent_" + talentName["Creature_".Length..];
-            var p = Path.Combine(root, "icons", $"{swapped}.webp");
+            var p = Path.Combine(root, "icons", $"{swapped}.png");
             if (File.Exists(p))
             {
                 return p;
@@ -142,7 +142,7 @@ internal static class TalentIconBundleService
             if (swapped.EndsWith("Standard", StringComparison.OrdinalIgnoreCase))
             {
                 var trimmed = swapped[..^"Standard".Length];
-                p = Path.Combine(root, "icons", $"{trimmed}.webp");
+                p = Path.Combine(root, "icons", $"{trimmed}.png");
                 if (File.Exists(p))
                 {
                     return p;

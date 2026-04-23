@@ -16,8 +16,8 @@ public sealed class TalentIconBundleHarvestTests
         Assert.NotNull(icons);
         Assert.True(icons!.Count > 50, "Expected harvested manifest with many talent icon entries.");
 
-        var webp = Path.Combine(dir, "icons", "T_Talent_Base_Health.webp");
-        Assert.True(File.Exists(webp), "Expected bundled T_Talent_Base_Health.webp from harvest.");
+        var png = Path.Combine(dir, "icons", "T_Talent_Base_Health.png");
+        Assert.True(File.Exists(png), "Expected bundled T_Talent_Base_Health.png from harvest.");
     }
 
     private static string ResolveTalentAssetsDir()

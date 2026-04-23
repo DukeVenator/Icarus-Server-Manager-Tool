@@ -54,6 +54,8 @@ internal sealed partial class MainForm : Form
     private DataGridView? _membersGrid;
     private DataGridView? _customSettingsGrid;
     private DataGridView? _mountsGrid;
+    private readonly Dictionary<Control, string> _lastLoggedMetadataValues = new();
+    private readonly Dictionary<string, string> _cellEditBeforeValues = new(StringComparer.Ordinal);
 
     private readonly ProspectEditorUpdateService _editorUpdateService = new();
     private ProspectEditorUpdateSettings _updateSettings = ProspectEditorUpdateSettings.Load();
@@ -73,6 +75,13 @@ internal sealed partial class MainForm : Form
         CaptureBaselines();
         InitializeTheme();
         SetupEditorUpdateFlow();
+        Shown += (_, _) =>
+        {
+            if (_document is null)
+            {
+                OpenProspect();
+            }
+        };
     }
 
     private void BuildLayout()
@@ -111,9 +120,17 @@ internal sealed partial class MainForm : Form
         var openProspect = new Button { Text = "Open Prospect", AutoSize = true };
         openProspect.Click += (_, _) => OpenProspect();
         var save = new Button { Text = "Save", AutoSize = true };
-        save.Click += (_, _) => SaveDocument();
+        save.Click += (_, _) =>
+        {
+            AppLogService.UserAction("Save clicked.");
+            SaveDocument();
+        };
         var saveAs = new Button { Text = "Save As", AutoSize = true };
-        saveAs.Click += (_, _) => SaveAs();
+        saveAs.Click += (_, _) =>
+        {
+            AppLogService.UserAction("Save As clicked.");
+            SaveAs();
+        };
         var refresh = new Button { Text = "Refresh View", AutoSize = true };
         refresh.Click += (_, _) =>
         {
@@ -121,9 +138,17 @@ internal sealed partial class MainForm : Form
             RefreshTabs();
         };
         var exportDecoded = new Button { Text = "Export Decoded", AutoSize = true };
-        exportDecoded.Click += async (_, _) => await ExportDecodedAsync();
+        exportDecoded.Click += async (_, _) =>
+        {
+            AppLogService.UserAction("Export Decoded clicked.");
+            await ExportDecodedAsync();
+        };
         var revertAll = new Button { Text = "Revert All Unsaved", AutoSize = true };
-        revertAll.Click += (_, _) => RevertAllUnsavedChanges();
+        revertAll.Click += (_, _) =>
+        {
+            AppLogService.UserAction("Revert All Unsaved clicked.");
+            RevertAllUnsavedChanges();
+        };
 
         var checkUpdates = new Button { Text = "Check for updates", AutoSize = true };
         checkUpdates.Click += async (_, _) => await CheckForEditorUpdateAsync(userInitiated: true);
@@ -216,15 +241,22 @@ internal sealed partial class MainForm : Form
             {
                 case TextBox box:
                     box.TextChanged += (_, _) => MarkDirty();
+                    box.Leave += (_, _) => LogMetadataEdit(box, box.Text);
                     break;
                 case NumericUpDown numeric:
                     numeric.ValueChanged += (_, _) => MarkDirty();
+                    numeric.Leave += (_, _) => LogMetadataEdit(numeric, numeric.Value.ToString());
                     break;
                 case CheckBox check:
-                    check.CheckedChanged += (_, _) => MarkDirty();
+                    check.CheckedChanged += (_, _) =>
+                    {
+                        MarkDirty();
+                        LogMetadataEdit(check, check.Checked ? "true" : "false");
+                    };
                     break;
                 case DateTimePicker picker:
                     picker.ValueChanged += (_, _) => MarkDirty();
+                    picker.Leave += (_, _) => LogMetadataEdit(picker, picker.Value.ToString("yyyy-MM-dd HH:mm:ss"));
                     break;
             }
         }
@@ -233,6 +265,7 @@ internal sealed partial class MainForm : Form
         {
             _expireTime.Enabled = !_neverExpires.Checked;
             MarkDirty();
+            LogMetadataEdit(_neverExpires, _neverExpires.Checked ? "true" : "false");
         };
 
         _pickClaimedAccountButton.Click += (_, _) => PickClaimedAccountFromKnownPlayers();
@@ -255,13 +288,24 @@ internal sealed partial class MainForm : Form
             AllowUserToAddRows = true,
             AllowUserToDeleteRows = true
         };
-        grid.CellValueChanged += (_, _) => MarkDirty();
+        grid.CellBeginEdit += (_, e) => CaptureCellBeforeValue(grid, e.RowIndex, e.ColumnIndex);
+        grid.CellValueChanged += (_, e) =>
+        {
+            MarkDirty();
+            LogGridCellChange(title, grid, e.RowIndex, e.ColumnIndex);
+        };
+        grid.UserAddedRow += (_, e) =>
+        {
+            var key = e.Row?.DataBoundItem?.ToString() ?? $"rowIndex={e.Row?.Index}";
+            AppLogService.UserAction($"Added {title} row ({key}).");
+        };
         grid.UserDeletedRow += (_, _) =>
         {
             if (title == "Mounts")
             {
                 _dangerNotes.Add("Mount entries were removed. This can break active mount ownership and state.");
             }
+            AppLogService.UserAction($"Removed {title} row.");
             MarkDirty();
         };
         var revertSelected = new Button { Text = $"Revert Selected {title} Row(s)", AutoSize = true };
@@ -297,7 +341,12 @@ internal sealed partial class MainForm : Form
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false
         };
-        grid.CellValueChanged += (_, _) => MarkDirty();
+        grid.CellBeginEdit += (_, e) => CaptureCellBeforeValue(grid, e.RowIndex, e.ColumnIndex);
+        grid.CellValueChanged += (_, e) =>
+        {
+            MarkDirty();
+            LogGridCellChange("Mounts", grid, e.RowIndex, e.ColumnIndex);
+        };
         _mountsGrid = grid;
 
         var editSelected = new Button { Text = "Edit Selected Mount", AutoSize = true };
@@ -420,6 +469,7 @@ internal sealed partial class MainForm : Form
 
         inspectSelected.Click += (_, _) =>
         {
+            AppLogService.UserAction($"{title}: inspect clicked ({grid.SelectedRows.Count} selected).");
             if (_document is null || grid.SelectedRows.Count != 1)
             {
                 MessageBox.Show("Select exactly one recorder to inspect.", "Inspector");
@@ -463,6 +513,7 @@ internal sealed partial class MainForm : Form
         };
         removeSelected.Click += (_, _) =>
         {
+            AppLogService.UserAction($"{title}: remove clicked ({grid.SelectedRows.Count} selected).");
             if (_document is null || grid.SelectedRows.Count == 0)
             {
                 return;
@@ -503,7 +554,14 @@ internal sealed partial class MainForm : Form
 
     private void BindTables()
     {
-        _tabs.SelectedIndexChanged += (_, _) => RefreshStatusLine();
+        _tabs.SelectedIndexChanged += (_, _) =>
+        {
+            if (_tabs.SelectedTab is { } tab)
+            {
+                AppLogService.UserAction($"Tab switched: {tab.Text}");
+            }
+            RefreshStatusLine();
+        };
     }
 
     private void OpenProspect()
@@ -513,24 +571,19 @@ internal sealed partial class MainForm : Form
             return;
         }
 
-        using var dialog = new OpenFileDialog
-        {
-            Filter = "Icarus Prospect (*.json)|*.json|All files (*.*)|*.*",
-            Title = "Open prospect JSON"
-        };
-
-        if (dialog.ShowDialog(this) != DialogResult.OK)
+        var selectedPath = SelectProspectPath();
+        if (string.IsNullOrWhiteSpace(selectedPath))
         {
             return;
         }
 
         try
         {
-            _document = ProspectLoadService.Load(dialog.FileName);
+            _document = ProspectLoadService.Load(selectedPath);
             _prospectPath.Text = _document.ProspectPath;
             _status.Text = "Prospect loaded.";
-            AppLogService.UserAction($"Opened prospect: {dialog.FileName}");
-            AppLogService.Info($"Prospect loaded: {dialog.FileName}");
+            AppLogService.UserAction($"Opened prospect: {selectedPath}");
+            AppLogService.Info($"Prospect loaded: {selectedPath}");
             _dirty = false;
             _dangerNotes.Clear();
             _inspectorEdits.Clear();
@@ -541,9 +594,31 @@ internal sealed partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            AppLogService.Error($"Failed to load prospect: {dialog.FileName}", ex);
+            AppLogService.Error($"Failed to load prospect: {selectedPath}", ex);
             MessageBox.Show($"Failed to load prospect.\n{ex.Message}", "Load failed");
         }
+    }
+
+    private string? SelectProspectPath()
+    {
+        if (_document is null)
+        {
+            using var wizard = new FreshProspectLoadWizardForm();
+            wizard.ApplyTheme(_isDarkTheme);
+            return wizard.ShowDialog(this) == DialogResult.OK ? wizard.SelectedPath : null;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Filter = "Icarus Prospect (*.json)|*.json|All files (*.*)|*.*",
+            Title = "Open prospect JSON"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return null;
+        }
+
+        return dialog.FileName;
     }
 
     private void SaveDocument()
@@ -835,6 +910,7 @@ internal sealed partial class MainForm : Form
 
     private void PickClaimedAccountFromKnownPlayers()
     {
+        AppLogService.UserAction("Wizard pick player opened.");
         var ids = _members
             .Select(m => m.UserID)
             .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -884,6 +960,7 @@ internal sealed partial class MainForm : Form
 
         if (picker.ShowDialog(this) != DialogResult.OK || list.SelectedItem is not string selected)
         {
+            AppLogService.UserAction("Wizard pick player cancelled.");
             return;
         }
 
@@ -904,6 +981,7 @@ internal sealed partial class MainForm : Form
     private void OnThemeChanged()
     {
         var selected = (_themeCombo.SelectedItem as string) ?? "Dark";
+        AppLogService.UserAction($"Theme changed to {selected}.");
         _isDarkTheme = string.Equals(selected, "Dark", StringComparison.OrdinalIgnoreCase);
         ThemePreferenceService.SaveTheme(selected);
         UiThemeService.ApplyTheme(this, _isDarkTheme);
@@ -989,6 +1067,7 @@ internal sealed partial class MainForm : Form
             MessageBoxIcon.Warning);
         if (confirm != DialogResult.Yes)
         {
+            AppLogService.UserAction("Revert all cancelled at confirmation dialog.");
             return;
         }
 
@@ -1146,6 +1225,74 @@ internal sealed partial class MainForm : Form
     private static string MemberRowKey(MemberRow row) => $"{row.UserID}|{row.ChrSlot}";
     private static string CustomSettingRowKey(CustomSettingRow row) => row.SettingRowName;
     private static string MountRowKey(MountRow row) => row.RecorderIndex.ToString();
+
+    private void LogMetadataEdit(Control control, string value)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        var key = GetMetadataFieldKey(control);
+
+        if (_lastLoggedMetadataValues.TryGetValue(control, out var previous) &&
+            string.Equals(previous, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        AppLogService.UserAction($"Edited metadata.{key}: '{previous ?? "<unset>"}' -> '{normalized}'.");
+        _lastLoggedMetadataValues[control] = normalized;
+    }
+
+    private string GetMetadataFieldKey(Control control)
+    {
+        if (ReferenceEquals(control, _lobbyName)) return "LobbyName";
+        if (ReferenceEquals(control, _prospectId)) return "ProspectId";
+        if (ReferenceEquals(control, _difficulty)) return "Difficulty";
+        if (ReferenceEquals(control, _dropPoint)) return "DropPoint";
+        if (ReferenceEquals(control, _insurance)) return "Insurance";
+        if (ReferenceEquals(control, _noRespawns)) return "NoRespawns";
+        if (ReferenceEquals(control, _claimedAccountId)) return "ClaimedAccountId";
+        if (ReferenceEquals(control, _claimedCharacterSlot)) return "ClaimedCharacterSlot";
+        if (ReferenceEquals(control, _prospectState)) return "ProspectState";
+        if (ReferenceEquals(control, _elapsedTime)) return "ElapsedTime";
+        if (ReferenceEquals(control, _cost)) return "Cost";
+        if (ReferenceEquals(control, _reward)) return "Reward";
+        if (ReferenceEquals(control, _prospectDtKey)) return "ProspectDtKey";
+        if (ReferenceEquals(control, _factionMissionDtKey)) return "FactionMissionDtKey";
+        if (ReferenceEquals(control, _neverExpires)) return "NeverExpires";
+        if (ReferenceEquals(control, _expireTime)) return "ExpireTime";
+        return control.GetType().Name;
+    }
+
+    private void CaptureCellBeforeValue(DataGridView grid, int rowIndex, int columnIndex)
+    {
+        if (rowIndex < 0 || columnIndex < 0 || rowIndex >= grid.Rows.Count || columnIndex >= grid.Columns.Count)
+        {
+            return;
+        }
+
+        var key = $"{grid.GetHashCode()}:{rowIndex}:{columnIndex}";
+        var value = grid.Rows[rowIndex].Cells[columnIndex].Value?.ToString() ?? string.Empty;
+        _cellEditBeforeValues[key] = value;
+    }
+
+    private void LogGridCellChange(string title, DataGridView grid, int rowIndex, int columnIndex)
+    {
+        if (rowIndex < 0 || columnIndex < 0 || rowIndex >= grid.Rows.Count || columnIndex >= grid.Columns.Count)
+        {
+            return;
+        }
+
+        var key = $"{grid.GetHashCode()}:{rowIndex}:{columnIndex}";
+        var before = _cellEditBeforeValues.TryGetValue(key, out var from) ? from : "<unknown>";
+        var after = grid.Rows[rowIndex].Cells[columnIndex].Value?.ToString() ?? string.Empty;
+        var column = grid.Columns[columnIndex].DataPropertyName;
+        if (string.IsNullOrWhiteSpace(column))
+        {
+            column = grid.Columns[columnIndex].Name;
+        }
+
+        AppLogService.UserAction($"Edited {title} row={rowIndex} col={column}: '{before}' -> '{after}'.");
+        _cellEditBeforeValues.Remove(key);
+    }
 
     private sealed record MetadataSnapshot(
         string LobbyName,

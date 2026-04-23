@@ -36,6 +36,7 @@ internal sealed class MountEditorForm : Form
     private TalentRemapResult? _pendingSwap;
     private readonly TalentIconDiskImageCache _talentIconCache = new();
     private bool _isDarkTheme;
+    private readonly Dictionary<string, string> _talentCellBeforeValues = new(StringComparer.Ordinal);
 
     private readonly Dictionary<string, NumericUpDown> _genetics = new(StringComparer.Ordinal)
     {
@@ -125,6 +126,7 @@ internal sealed class MountEditorForm : Form
         {
             if (!UpdateValidation())
             {
+                AppLogService.UserAction($"Mount apply blocked by validation: '{_mount.MountName}' (recorder {_mount.RecorderIndex}).");
                 MessageBox.Show("Mount has validation issues. Resolve them before applying changes.", "Validation");
                 DialogResult = DialogResult.None;
                 return;
@@ -270,6 +272,10 @@ internal sealed class MountEditorForm : Form
         });
         _talentsGrid.DataBindingComplete += (_, _) => PopulateTalentIconCells();
         _talents.ListChanged += TalentsOnListChanged;
+        _talentsGrid.CellBeginEdit += (_, e) => CaptureTalentCellBefore(e.RowIndex, e.ColumnIndex);
+        _talentsGrid.CellValueChanged += (_, e) => LogTalentGridCellChange(e.RowIndex, e.ColumnIndex);
+        _talentsGrid.UserAddedRow += (_, e) => AppLogService.UserAction($"Mount talent row added: '{_mount.MountName}' row={e.Row?.Index ?? -1}.");
+        _talentsGrid.UserDeletedRow += (_, _) => AppLogService.UserAction($"Mount talent row deleted: '{_mount.MountName}'.");
         _talentsGrid.CellValidating += TalentGridOnCellValidating;
         _talentsGrid.RowPrePaint += TalentGridOnRowPrePaint;
         page.Controls.Add(_talentsGrid);
@@ -365,7 +371,11 @@ internal sealed class MountEditorForm : Form
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
         panel.Controls.Add(_ownerName);
         panel.Controls.Add(_ownerWizard);
-        _ownerWizard.Click += (_, _) => PickOwnerFromProspect();
+        _ownerWizard.Click += (_, _) =>
+        {
+            AppLogService.UserAction($"Mount owner wizard opened: '{_mount.MountName}' (recorder {_mount.RecorderIndex}).");
+            PickOwnerFromProspect();
+        };
         AddField(grid, row, "Owner Name", panel);
     }
 
@@ -375,10 +385,54 @@ internal sealed class MountEditorForm : Form
         panel.Controls.Add(_species);
         panel.Controls.Add(_previewSwap);
         panel.Controls.Add(_swapSpecies);
-        _previewSwap.Click += (_, _) => PreviewSpeciesSwap();
-        _swapSpecies.Click += (_, _) => ApplySpeciesSwap();
-        _species.SelectedIndexChanged += (_, _) => RefreshVariationOptions();
+        _previewSwap.Click += (_, _) =>
+        {
+            AppLogService.UserAction($"Mount species swap preview clicked: '{_mount.MountName}' -> {_species.Text.Trim()}.");
+            PreviewSpeciesSwap();
+        };
+        _swapSpecies.Click += (_, _) =>
+        {
+            AppLogService.UserAction($"Mount species swap clicked: '{_mount.MountName}' -> {_species.Text.Trim()}.");
+            ApplySpeciesSwap();
+        };
+        _species.SelectedIndexChanged += (_, _) =>
+        {
+            AppLogService.UserAction($"Mount species dropdown changed: '{_mount.MountName}' -> {_species.Text.Trim()}.");
+            RefreshVariationOptions();
+        };
         AddField(grid, row, "Species", panel);
+    }
+
+    private void CaptureTalentCellBefore(int rowIndex, int columnIndex)
+    {
+        if (_talentsGrid is null || rowIndex < 0 || columnIndex < 0 || rowIndex >= _talentsGrid.Rows.Count || columnIndex >= _talentsGrid.Columns.Count)
+        {
+            return;
+        }
+
+        var key = $"{rowIndex}:{columnIndex}";
+        var value = _talentsGrid.Rows[rowIndex].Cells[columnIndex].Value?.ToString() ?? string.Empty;
+        _talentCellBeforeValues[key] = value;
+    }
+
+    private void LogTalentGridCellChange(int rowIndex, int columnIndex)
+    {
+        if (_talentsGrid is null || rowIndex < 0 || columnIndex < 0 || rowIndex >= _talentsGrid.Rows.Count || columnIndex >= _talentsGrid.Columns.Count)
+        {
+            return;
+        }
+
+        var key = $"{rowIndex}:{columnIndex}";
+        var before = _talentCellBeforeValues.TryGetValue(key, out var prior) ? prior : "<unknown>";
+        var after = _talentsGrid.Rows[rowIndex].Cells[columnIndex].Value?.ToString() ?? string.Empty;
+        var columnName = _talentsGrid.Columns[columnIndex].DataPropertyName;
+        if (string.IsNullOrWhiteSpace(columnName))
+        {
+            columnName = _talentsGrid.Columns[columnIndex].Name;
+        }
+
+        AppLogService.UserAction($"Mount talent edited: '{_mount.MountName}' row={rowIndex} col={columnName} '{before}' -> '{after}'.");
+        _talentCellBeforeValues.Remove(key);
     }
 
     private void RefreshVariationOptions()

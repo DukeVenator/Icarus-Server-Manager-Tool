@@ -1,16 +1,17 @@
-name: release
+name: release-editor
 
-# Releases only run after tests pass. Tag pushes create a GitHub Release + asset zip.
+# Prospect Editor releases: push tag `editor-v*` (e.g. editor-v1.0.1).
 # workflow_dispatch runs tests + publish and uploads a build artifact (no GitHub Release).
-# After a version tag release, README.md is updated on `main` (<!-- RELEASE_BLOCK --> … <!-- /RELEASE_BLOCK -->).
+# Tag pushes create a GitHub Release + IcarusProspectEditor-<tag>-win-x64.zip and update README (<!-- EDITOR_RELEASE_BLOCK -->).
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "editor-v*"
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-editor-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +38,7 @@ jobs:
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-release-${{ github.run_id }}
+          name: coverage-release-editor-${{ github.run_id }}
           path: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
           if-no-files-found: error
 
@@ -64,32 +65,31 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Publish (win-x64, framework-dependent)
-        run: dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false -o "${{ github.workspace }}/publish" --verbosity minimal
+      - name: Publish Prospect Editor (win-x64, framework-dependent)
+        run: dotnet publish IcarusProspectEditor/IcarusProspectEditor.csproj -c Release -r win-x64 --self-contained false -o "${{ github.workspace }}/publish-editor" --verbosity minimal
 
       - name: Zip publish folder
         shell: pwsh
-        run: Compress-Archive -Path "${{ github.workspace }}/publish/*" -DestinationPath "${{ github.workspace }}/IcarusServerManager-${{ github.ref_name }}-win-x64.zip" -Force
+        run: Compress-Archive -Path "${{ github.workspace }}/publish-editor/*" -DestinationPath "${{ github.workspace }}/IcarusProspectEditor-${{ github.ref_name }}-win-x64.zip" -Force
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IcarusServerManager-${{ github.ref_name }}-win-x64
-          path: ${{ github.workspace }}/publish/
+          name: IcarusProspectEditor-${{ github.ref_name }}-win-x64
+          path: ${{ github.workspace }}/publish-editor/
 
-      - name: Create GitHub Release (tags only)
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+      - name: Create GitHub Release (editor tags only)
+        if: github.event_name == 'push' && startsWith(github.ref_name, 'editor-')
         uses: softprops/action-gh-release@v2
         with:
-          files: IcarusServerManager-${{ github.ref_name }}-win-x64.zip
+          files: IcarusProspectEditor-${{ github.ref_name }}-win-x64.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Keeps README "Latest release" in sync with the tag that triggered this workflow (default branch only).
   update-readme-release:
     needs: publish
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'editor-')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -101,7 +101,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sync README release block with tag
+      - name: Sync README editor release block with tag
         shell: pwsh
         env:
           TAG: ${{ github.ref_name }}
@@ -113,14 +113,14 @@ jobs:
           $tag = $env:TAG
           $repo = $env:GITHUB_REPOSITORY
           $url = "https://github.com/$repo/releases/tag/$tag"
-          $zip = "IcarusServerManager-$tag-win-x64.zip"
-          $start = "<!-- RELEASE_BLOCK -->"
-          $end = "<!-- /RELEASE_BLOCK -->"
+          $zip = "IcarusProspectEditor-$tag-win-x64.zip"
+          $start = "<!-- EDITOR_RELEASE_BLOCK -->"
+          $end = "<!-- /EDITOR_RELEASE_BLOCK -->"
           $pattern = '(?s)' + [regex]::Escape($start) + '.*?' + [regex]::Escape($end)
-          if ($readme -notmatch $pattern) { throw "README.md must contain $start … $end (see release workflow comment)" }
+          if ($readme -notmatch $pattern) { throw "README.md must contain $start … $end (see release-editor workflow)" }
           $nl = if ($readme -match "`r`n") { "`r`n" } else { "`n" }
           $replacement = $start + $nl +
-            "**Latest release:** [$tag]($url) — on that page, download **$zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))." +
+            "**Latest Prospect Editor release:** [$tag]($url) — on that page, download **$zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))." +
             $nl + $end
           $newReadme = [regex]::Replace($readme, $pattern, $replacement)
           $utf8 = New-Object System.Text.UTF8Encoding $false
@@ -135,8 +135,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
           if git diff --staged --quiet; then
-            echo "README release block already matches ${TAG}; nothing to commit."
+            echo "README editor release block already matches ${TAG}; nothing to commit."
             exit 0
           fi
-          git commit -m "docs: README release block for ${TAG}"
+          git commit -m "docs: README editor release block for ${TAG}"
           git push origin HEAD:main

@@ -17,7 +17,7 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 <!-- /MANAGER_RELEASE_BLOCK -->
 
 <!-- EDITOR_RELEASE_BLOCK -->
-**Latest Prospect Editor release:** [editor-v1.0.0](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/editor-v1.0.0) — on that page, download **IcarusProspectEditor-editor-v1.0.0-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
+**Latest Prospect Editor release:** [editor-v1.0.1](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/editor-v1.0.1) — on that page, download **IcarusProspectEditor-editor-v1.0.1-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
 <!-- /EDITOR_RELEASE_BLOCK -->
 
 **Last tested with Icarus Dedicated Server build:** 227

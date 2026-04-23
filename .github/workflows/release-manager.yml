@@ -136,6 +136,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
@@ -144,4 +145,19 @@ jobs:
             exit 0
           fi
           git commit -m "docs: README manager release block for ${TAG}"
-          git push origin HEAD:main
+          # Race-safe push: if another release workflow (e.g. release-editor) pushed
+          # to main between our checkout and push, rebase our single doc commit on
+          # top of the new tip and retry a few times.
+          attempt=1
+          max_attempts=5
+          until git push origin HEAD:main; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "README manager push failed after ${max_attempts} attempts." >&2
+              exit 1
+            fi
+            echo "Push rejected (likely concurrent release push). Rebasing on origin/main and retrying (attempt $((attempt+1))/${max_attempts})..."
+            git fetch origin main
+            git rebase origin/main
+            attempt=$((attempt+1))
+            sleep $((RANDOM % 5 + 1))
+          done

@@ -1,145 +1,199 @@
-# Icarus Server Manager
+# Icarus Server Manager + Prospect Editor
 
-[![Pipeline](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml/badge.svg)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml)
+[![CI](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml/badge.svg)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/actions/workflows/dotnet-ci.yml)
 [![Coverage](https://codecov.io/gh/DukeVenator/Icarus-Server-Manager-Tool/branch/main/graph/badge.svg)](https://codecov.io/gh/DukeVenator/Icarus-Server-Manager-Tool)
-[![Latest Release](https://img.shields.io/github/v/release/DukeVenator/Icarus-Server-Manager-Tool?label=latest%20release)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/latest)
+[![Manager Release](https://img.shields.io/github/v/tag/DukeVenator/Icarus-Server-Manager-Tool?filter=manager-v*&label=manager%20release)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases)
+[![Editor Release](https://img.shields.io/github/v/tag/DukeVenator/Icarus-Server-Manager-Tool?filter=editor-v*&label=editor%20release)](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE.md)
+[![.NET 8](https://img.shields.io/badge/.NET-8-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-A Windows app that helps you install, run, and maintain an **Icarus Dedicated Server** without editing files by hand.
+This repo has two Windows tools that make Icarus hosting and prospect editing easier:
 
-<!-- RELEASE_BLOCK -->
-**Latest release:** [v1.0.8](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/v1.0.8) — on that page, download **IcarusServerManager-v1.0.8-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
-<!-- /RELEASE_BLOCK -->
+- **Icarus Server Manager**: install, configure, run, monitor, and maintain a dedicated server without hand-editing everything.
+- **Icarus Prospect Editor**: edit decoded prospect JSON safely with validation, backups, and advanced mount tooling.
+
+<!-- MANAGER_RELEASE_BLOCK -->
+**Latest Server Manager release:** [v1.0.8](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/v1.0.8) — download **IcarusServerManager-v1.0.8-win-x64.zip** from **Assets**.
+<!-- /MANAGER_RELEASE_BLOCK -->
+
+<!-- EDITOR_RELEASE_BLOCK -->
+**Latest Prospect Editor release:** Push an `editor-v*` tag to create a GitHub release; the workflow publishes **`IcarusProspectEditor-<tag>-win-x64.zip`** (replace `<tag>` with your tag, for example `editor-v1.0.0`).
+<!-- /EDITOR_RELEASE_BLOCK -->
 
 **Last tested with Icarus Dedicated Server build:** 227
-<img width="1540" height="1625" alt="image" src="https://github.com/user-attachments/assets/f81b75e5-fe3b-4164-ba72-394a5ca4031f" />
 
 ---
 
-## What this tool does (quick feature list)
+## Pick Your Tool
 
-- **One-click install/update** with bundled SteamCMD.
-- **Simple server setup UI** for name, ports, prospect options, and other server settings.
-- **Start/stop controls** with live console output.
-- **Automatic restart policies** (crash recovery, interval restarts, empty-server, high-memory).
-- **Live stats dashboard** (CPU, RAM, uptime, restart history, player hints, CSV export).
-- **Discord notifications** with per-event toggles (optional).
-- **Presets and config bundles** for backup/migration.
-- **Light and dark mode**.
+### Use Server Manager if you want to
+- Install/update Icarus dedicated server with SteamCMD.
+- Start/stop the server from a UI with safer shutdown handling.
+- Configure INI settings, restart policies, Discord notifications, and console filters.
+- Watch live stats (CPU, memory, uptime, restart history, player hints).
 
----
-
-## Getting started
-
-If this is your first time, follow these steps in order:
-
-1. **Download the manager**  
-   Use the **Latest release** link at the top of this README. On the release page, download the **IcarusServerManager-*-win-x64.zip** file under **Assets**, extract it anywhere you like, and run `IcarusServerManager.exe`.
-
-2. **Open Manager Settings**
-   - At the top, set your **Server install folder**.
-   - Use **Browse…** to pick the folder where Icarus server files should live.
-   - You can also use **Setup wizard…** if you want guidance.
-
-3. **Install or update the server**
-   - Click **Install/Update Server**.
-   - Wait until the console says install/update completed.
-
-4. **Configure your server**
-   - Go to **Server Settings**.
-   - Fill in your server name, ports, and gameplay options.
-   - If unsure, leave most defaults as-is at first.
-
-5. **Save your settings**
-   - Click **Save to INI** (game server settings).
-   - Click **Save Manager Options** (manager app settings like restart rules, theme, Discord, console behavior).
-
-6. **Start the server**
-   - Click **Start Server**.
-   - Watch the **Console** tab for startup messages.
-
-7. **(Optional) Turn on automation**
-   - In **Manager Settings**, enable restart policies and/or Discord notifications.
-
-That is enough to get a working dedicated server running.
+### Use Prospect Editor if you want to
+- Open and edit decoded prospect JSON.
+- Update metadata, members, custom settings, and mount details.
+- Use mount species swap/remap tools with validation and range clamping.
+- Export decoded data and inspect low-level recorder fields when needed.
 
 ---
 
-## Tabs explained in plain language
+## Quick Start: Server Manager
 
-- **Console**: Live log output from the server and manager.
-- **Server Settings**: Main game/server config. Also includes INI load/save, presets, and backups.
-- **Last world**: Shows details from your selected prospect save.
-- **Manager Settings**: App behavior (theme, automation, paths, Discord, schedule, console filters).
-- **Stats**: Health and performance view (CPU, memory, uptime, restart and player info).
-- <img width="1512" height="643" alt="image" src="https://github.com/user-attachments/assets/55bb4de4-7e0b-47db-8a8a-48b17ccbc8c6" />
-
+1. Download the manager zip from the **Latest Server Manager release** block above.
+2. Extract and run `IcarusServerManager.exe`.
+3. In **Manager Settings**, set **Server install folder** (or run **Setup wizard**).
+4. Click **Install/Update Server**.
+5. In **Server Settings**, set name/ports/options.
+6. Click **Save to INI**, then **Save Manager Options**.
+7. Click **Start Server** and watch the **Console** tab.
+8. Optional: enable restart policies and Discord notifications after first stable run.
 
 ---
 
-## Common tasks
+## Quick Start: Prospect Editor
+
+1. Download `IcarusProspectEditor-<tag>-win-x64.zip` from the latest editor release.
+2. Extract and run `IcarusProspectEditor.exe`.
+3. Click **Open Prospect** and select a decoded prospect JSON file.
+4. Edit values in tabs (Metadata, Members, Custom Settings, Mounts).
+5. Click **Save**.
+
+### Important Safety Warning
+
+- Always keep separate backups of your save/prospect files before editing.
+- The editor includes backup-on-save and validation, but advanced edits can still create bad or game-incompatible data.
+- You accept all risk for edits. The project maintainers are not liable for data loss, corruption, or broken saves.
+
+---
+
+## Server Manager Features
+
+- Install or update the game server with one click.
+- Start and stop the server from the app.
+- Force stop if the server gets stuck.
+- Setup wizard to help first-time users.
+- Auto-restart after crashes.
+- Auto-restart on a schedule (for example every X hours).
+- Auto-restart if memory gets too high.
+- Auto-restart when the server is empty.
+- Daily maintenance window for planned restarts.
+- Safer shutdown that gives the server time to save.
+- Console with filters so it is easy to read.
+- Preset log views (Minimal, Balanced, Verbose, QuietGame, Custom).
+- Stats view with CPU, memory, and uptime.
+- Chart history to spot issues over time.
+- Export stats to CSV for troubleshooting.
+- Last World view to check active prospect info.
+- Prospect picker to swap the active world easily.
+- Save and load server presets.
+- Export and import full config bundles.
+- One-click INI backup.
+- World backup to zip or folder.
+- Discord notifications with on/off toggles per event.
+- Spam control for busy Discord channels.
+- Light and dark theme.
+- Built-in update checker for the app itself.
+
+---
+
+## Prospect Editor Features
+
+- Open and edit decoded prospect files.
+- Edit prospect info like name and difficulty.
+- Edit member info.
+- Edit custom settings.
+- Edit mounts in a dedicated mount editor.
+- Change a mount to a different species.
+- Preview a species swap before applying it.
+- Simple views for genetics and talents.
+- Safer number ranges so you cannot enter extreme values.
+- Highlights for unsaved changes.
+- Revert all unsaved changes in one click.
+- Revert single rows in some tabs.
+- Automatic backup copy when saving over an existing file.
+- Warnings before risky actions.
+- Export decoded data for diagnostics.
+- Fast export or detailed export options.
+- Inspect raw fields (advanced only).
+- Light and dark theme.
+- Built-in update checker for the editor itself.
+
+---
+
+## Common Tasks
 
 ### Change server name or ports
 1. Open **Server Settings**.
 2. Edit values.
 3. Click **Save to INI**.
-4. Restart server from the app.
+4. Restart from the app.
 
-### Back up your world/prospect files
-- In **Server Settings**, use the prospect/world backup actions (ZIP or folder copy).
+### Move server config to another machine
+1. Export a config bundle.
+2. Copy it to the new machine.
+3. Import bundle and validate paths.
 
-### Save a preset you can reuse later
-- In **Server Settings**, save a preset profile, then load it anytime.
+### Back up world/prospect data
+- Use backup actions in **Server Settings** (zip or folder copy).
 
-### Move setup to another machine
-- Export a config bundle, copy it to the new PC, then import it.
-
----
-
-## Discord notifications (optional)
-
-In **Manager Settings** you can enable Discord webhooks and choose exactly which events post messages, such as:
-
-- server started/stopped
-- crash/unexpected exit
-- restart warnings and restart failures
-- scheduled update window reached
-- possible player join/leave/chat/gameplay events
-- heartbeat summaries
-
-You can keep this very quiet or very detailed using the toggles.
+### Keep Prospect Editor safe
+- Use **Save As** before major edits.
+- Keep external backups, not just `.bak` files.
+- Treat recorder-level edits as advanced/high-risk changes.
 
 ---
 
-## Console logging controls
+## Release Tagging and CI (Maintainers)
 
-The Console tab includes:
+### Tag strategy
+- Server Manager releases: `manager-v*` (preferred), legacy `v*` still supported.
+- Prospect Editor releases: `editor-v*`.
 
-- **Logging presets** (Minimal, Balanced, Verbose, QuietGame)
-- **Per-type toggles** to show/hide manager and game log categories
+### What each workflow does
+- `dotnet-ci.yml`: build + test for branches and PRs.
+- `release-manager.yml`: packages manager zip, creates release, updates `MANAGER_RELEASE_BLOCK`.
+- `release-editor.yml`: packages editor zip, creates release, updates `EDITOR_RELEASE_BLOCK`.
 
-This only affects what you see in the app console. It does not remove data from disk log files.
+### Example commands
+
+```bash
+# Server Manager (preferred)
+git tag manager-v1.0.9
+git push origin manager-v1.0.9
+
+# Server Manager (legacy track)
+git tag v1.0.8
+git push origin v1.0.8
+
+# Prospect Editor
+git tag editor-v1.0.1
+git push origin editor-v1.0.1
+```
 
 ---
 
 ## Requirements
 
-- **Windows**
-- **.NET 8 Desktop Runtime** (for running published builds)
-
-If building from source, install the **.NET 8 SDK**.
-
----
-
-## Where files are stored
-
-- **Manager options:** `%LocalAppData%\IcarusServerManager\manager-options.json`
-- **Manager logs:** `logs\manager-YYYYMMDD.log` (next to the executable)
-- **Server INI (default):**
-  `Icarus\Saved\Config\WindowsServer\ServerSettings.ini`
+- Windows
+- .NET 8 Desktop Runtime for published builds
+- .NET 8 SDK if building from source
 
 ---
 
-## Build from source (developer section)
+## Where Files Are Stored
+
+- Manager options: `%LocalAppData%\IcarusServerManager\manager-options.json`
+- Manager logs: `logs\manager-YYYYMMDD.log` (next to executable)
+- Prospect Editor logs: `%LocalAppData%\IcarusProspectEditor\logs\`
+- Prospect Editor update settings: `%LocalAppData%\IcarusProspectEditor\prospect-editor-update.json`
+- Server INI default: `Icarus\Saved\Config\WindowsServer\ServerSettings.ini`
+
+---
+
+## Build From Source
 
 ```bash
 dotnet restore IcarusServerManager.sln
@@ -147,33 +201,17 @@ dotnet build IcarusServerManager.sln -c Release
 dotnet test IcarusServerManager.sln -c Release
 ```
 
-Publish example:
-
 ```bash
 dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false -o ./publish
+dotnet publish IcarusProspectEditor/IcarusProspectEditor.csproj -c Release -r win-x64 --self-contained false -o ./publish-editor
 ```
 
 ---
 
-## CI and releases (developer section)
+## Wiki and References
 
-- CI workflow runs build + tests on pushes/PRs.
-- Release workflow runs on `v*` tags and publishes win-x64 artifacts.
-- Pushing a **version tag** also updates the **Latest release** block at the top of this README on `main` (see `<!-- RELEASE_BLOCK -->` in the source).
-
-Example release tag:
-
-```bash
-git tag v1.0.4
-git push origin v1.0.4
-```
-
----
-
-## Useful reference
-
-- Icarus launch/server parameters wiki:  
-  [RocketWerkz Icarus Dedicated Server Wiki](https://github.com/RocketWerkz/IcarusDedicatedServer/wiki/Server-Config-&-Launch-Parameters)
+- Project wiki: [Icarus Server Manager Tool Wiki](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki)
+- Icarus launch/server parameters: [RocketWerkz Icarus Dedicated Server Wiki](https://github.com/RocketWerkz/IcarusDedicatedServer/wiki/Server-Config-&-Launch-Parameters)
 
 ---
 

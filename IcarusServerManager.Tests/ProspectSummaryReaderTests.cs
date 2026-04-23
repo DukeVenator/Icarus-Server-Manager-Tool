@@ -63,9 +63,9 @@ public sealed class ProspectSummaryReaderTests
             		"ElapsedTime": 18,
             		"AssociatedMembers": [
             			{
-            				"AccountName": "DUKEVENATOR",
-            				"CharacterName": "DUKEVENATOR",
-            				"UserID": "76561198057119793",
+            				"AccountName": "TESTPLAYER01",
+            				"CharacterName": "TESTPLAYER01",
+            				"UserID": "76561190000000001",
             				"ChrSlot": 0,
             				"Experience": 5995235,
             				"Status": "Prospect_Conifer",
@@ -87,7 +87,7 @@ public sealed class ProspectSummaryReaderTests
         {
             var s = ProspectSummaryReader.Read(path);
             var m = Assert.Single(s.Members);
-            Assert.Equal("DUKEVENATOR", m.AccountName);
+            Assert.Equal("TESTPLAYER01", m.AccountName);
             Assert.True(m.IsCurrentlyPlaying);
             Assert.Equal(18, s.ElapsedGameMinutes);
             Assert.Equal(0, s.Cost);

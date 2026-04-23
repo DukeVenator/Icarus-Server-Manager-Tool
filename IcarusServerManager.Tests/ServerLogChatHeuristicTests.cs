@@ -32,7 +32,7 @@ public sealed class ServerLogChatHeuristicTests
     public void LooksLikeChatLine_ReturnsFalse_ForIcarusAddConnectedPlayer()
     {
         var line =
-            "LogConnectedPlayers: Display: AddConnectedPlayer - UserId: 1 | PlayerName: Duke Venator Mythis";
+            "LogConnectedPlayers: Display: AddConnectedPlayer - UserId: 1 | PlayerName: Test Player One";
         Assert.False(ServerLogChatHeuristic.LooksLikeChatLine(line, PlayerLogLineResult.None));
     }
 }

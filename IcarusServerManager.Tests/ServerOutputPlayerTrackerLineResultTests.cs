@@ -60,11 +60,11 @@ public sealed class ServerOutputPlayerTrackerLineResultTests
     {
         var t = new ServerOutputPlayerTracker();
         var line =
-            "LogConnectedPlayers: Display: AddConnectedPlayer - UserId: 76561198057119793 | PlayerName: Duke Venator Mythis";
+            "LogConnectedPlayers: Display: AddConnectedPlayer - UserId: 76561190000000001 | PlayerName: Test Player One";
         var r = t.ProcessLogLine(line);
         Assert.Equal(PlayerLogHintKind.Joined, r.Kind);
-        Assert.Equal("Duke Venator Mythis", r.PlayerName);
-        Assert.Contains("Duke Venator Mythis", t.HintNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("Test Player One", r.PlayerName);
+        Assert.Contains("Test Player One", t.HintNames, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

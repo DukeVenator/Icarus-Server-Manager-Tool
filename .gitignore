@@ -24,6 +24,13 @@ logs/
 Thumbs.db
 
 # Testing Files
+# Curated fixtures live in IcarusServerManager.Tests/TestData and MUST be tracked.
+# Ignore stray copies at the repo root or anywhere else, and never commit the
+# decoded/expanded JSON exports (they are large and only for local inspection).
 SufferingResort.decoded.json
-SufferingResort.json
-Mounts.json
+**/SufferingResort.decoded.json
+/SufferingResort.json
+/Mounts.json
+/*.decoded.json
+!IcarusServerManager.Tests/TestData/
+!IcarusServerManager.Tests/TestData/**

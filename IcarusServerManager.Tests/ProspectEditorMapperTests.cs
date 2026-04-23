@@ -68,7 +68,7 @@ public sealed class ProspectEditorMapperTests
     [Fact]
     public void ReadTalentRows_ReturnsOnlyNumericTalentLikeFields()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
         var mounts = ProspectModelMapper.ReadRecorderRowsByCategory(loaded.Prospect, RecorderCategory.Mount);
         Assert.NotEmpty(mounts);
@@ -80,7 +80,7 @@ public sealed class ProspectEditorMapperTests
     [Fact]
     public void ApplyMountFromProspect_UpdatesMountAndPersistsRoundtripFields()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
         var mounts = ProspectModelMapper.ReadMountsFromProspect(loaded.Prospect);
         Assert.NotEmpty(mounts);
@@ -102,20 +102,4 @@ public sealed class ProspectEditorMapperTests
         Assert.Equal(22, refreshed!.Level);
     }
 
-    private static string ResolveWorkspaceFile(string filename)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, filename);
-            var slnCandidate = Path.Combine(dir.FullName, "IcarusServerManager.sln");
-            if (File.Exists(candidate) && File.Exists(slnCandidate))
-            {
-                return candidate;
-            }
-            dir = dir.Parent;
-        }
-
-        throw new FileNotFoundException($"Unable to resolve {filename} from test base directory.");
-    }
 }

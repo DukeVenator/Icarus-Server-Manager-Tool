@@ -10,7 +10,7 @@ public sealed class ProspectEditorDecodeAndInspectorTests
     [Fact]
     public void Load_SufferingResort_DecodesProspectAndRecorderData()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var loaded = ProspectLoadService.Load(sourcePath);
 
         Assert.NotNull(loaded.Prospect);
@@ -25,7 +25,7 @@ public sealed class ProspectEditorDecodeAndInspectorTests
     [Fact]
     public void ApplyRecorderFieldEdits_ChangesFieldAndRoundTrips()
     {
-        var sourcePath = ResolveWorkspaceFile("SufferingResort.json");
+        var sourcePath = TestData.ResolveFile("SufferingResort.json");
         var tempDir = Directory.CreateTempSubdirectory("prospect-inspector-tests");
         var tempProspectPath = Path.Combine(tempDir.FullName, "editable.json");
         File.Copy(sourcePath, tempProspectPath, overwrite: true);
@@ -53,23 +53,6 @@ public sealed class ProspectEditorDecodeAndInspectorTests
         var editedField = reloadedFields.FirstOrDefault(f => f.Path == editable.Path);
         Assert.NotNull(editedField);
         Assert.Equal(updatedValue, editedField!.Value);
-    }
-
-    private static string ResolveWorkspaceFile(string filename)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, filename);
-            var slnCandidate = Path.Combine(dir.FullName, "IcarusServerManager.sln");
-            if (File.Exists(candidate) && File.Exists(slnCandidate))
-            {
-                return candidate;
-            }
-            dir = dir.Parent;
-        }
-
-        throw new FileNotFoundException($"Unable to resolve {filename} from test base directory.");
     }
 
     private static string BuildUpdatedValue(RecorderFieldRow field) =>

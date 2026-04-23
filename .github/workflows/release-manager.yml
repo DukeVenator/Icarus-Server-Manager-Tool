@@ -1,0 +1,143 @@
+name: release-manager
+
+# Manager releases: push tag `manager-v*` (preferred) or legacy `v*`.
+# workflow_dispatch runs tests + publish and uploads a build artifact (no GitHub Release).
+# Tag pushes create a GitHub Release + IcarusServerManager-<tag>-win-x64.zip and update README (<!-- MANAGER_RELEASE_BLOCK -->).
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "manager-v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-manager-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore IcarusServerManager.sln
+
+      - name: Build
+        run: dotnet build IcarusServerManager.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test IcarusServerManager.sln --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-release-manager-${{ github.run_id }}
+          path: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
+          fail_ci_if_error: false
+          verbose: true
+
+  publish:
+    needs: test
+    if: success()
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish (win-x64, framework-dependent)
+        run: dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false -o "${{ github.workspace }}/publish" --verbosity minimal
+
+      - name: Zip publish folder
+        shell: pwsh
+        run: Compress-Archive -Path "${{ github.workspace }}/publish/*" -DestinationPath "${{ github.workspace }}/IcarusServerManager-${{ github.ref_name }}-win-x64.zip" -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IcarusServerManager-${{ github.ref_name }}-win-x64
+          path: ${{ github.workspace }}/publish/
+
+      - name: Create GitHub Release (manager tags only)
+        if: github.event_name == 'push' && (startsWith(github.ref_name, 'manager-') || startsWith(github.ref_name, 'v'))
+        uses: softprops/action-gh-release@v2
+        with:
+          files: IcarusServerManager-${{ github.ref_name }}-win-x64.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-readme-release:
+    needs: publish
+    if: github.event_name == 'push' && (startsWith(github.ref_name, 'manager-') || startsWith(github.ref_name, 'v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync README manager release block with tag
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          $readmePath = Join-Path (Get-Location) "README.md"
+          if (-not (Test-Path $readmePath)) { throw "README.md not found" }
+          $readme = [System.IO.File]::ReadAllText($readmePath)
+          $tag = $env:TAG
+          $repo = $env:GITHUB_REPOSITORY
+          $url = "https://github.com/$repo/releases/tag/$tag"
+          $zip = "IcarusServerManager-$tag-win-x64.zip"
+          $start = "<!-- MANAGER_RELEASE_BLOCK -->"
+          $end = "<!-- /MANAGER_RELEASE_BLOCK -->"
+          $pattern = '(?s)' + [regex]::Escape($start) + '.*?' + [regex]::Escape($end)
+          if ($readme -notmatch $pattern) { throw "README.md must contain $start … $end (see release-manager workflow)" }
+          $nl = if ($readme -match "`r`n") { "`r`n" } else { "`n" }
+          $replacement = $start + $nl +
+            "**Latest Server Manager release:** [$tag]($url) — on that page, download **$zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))." +
+            $nl + $end
+          $newReadme = [regex]::Replace($readme, $pattern, $replacement)
+          $utf8 = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::WriteAllText($readmePath, $newReadme, $utf8)
+
+      - name: Commit and push README (if changed)
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if git diff --staged --quiet; then
+            echo "README manager release block already matches ${TAG}; nothing to commit."
+            exit 0
+          fi
+          git commit -m "docs: README manager release block for ${TAG}"
+          git push origin HEAD:main

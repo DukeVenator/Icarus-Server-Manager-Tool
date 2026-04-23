@@ -2,7 +2,12 @@
 **/bin/
 **/obj/
 publish/
-
+publish-editor/
+IcarusProspectEditor/artifacts
+IcarusProspectEditor/artifacts/temp-obj/
+**/TestResults/
+*.trx
+*.coverage
 # IDE/user files
 *.user
 *.suo
@@ -17,3 +22,8 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Testing Files
+SufferingResort.decoded.json
+SufferingResort.json
+Mounts.json

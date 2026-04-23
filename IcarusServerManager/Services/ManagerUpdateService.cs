@@ -14,9 +14,8 @@ internal sealed class ManagerUpdateService
 
     public async Task<ManagerReleaseInfo?> GetLatestReleaseAsync(bool includePrerelease, CancellationToken ct)
     {
-        var url = includePrerelease
-            ? "https://api.github.com/repos/DukeVenator/Icarus-Server-Manager-Tool/releases?per_page=10"
-            : "https://api.github.com/repos/DukeVenator/Icarus-Server-Manager-Tool/releases/latest";
+        // Always scan recent releases: `releases/latest` may point at an editor-only tag when both tools share one repo.
+        var url = "https://api.github.com/repos/DukeVenator/Icarus-Server-Manager-Tool/releases?per_page=30";
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
@@ -31,24 +30,86 @@ internal sealed class ManagerUpdateService
         }
 
         var token = JToken.Parse(json);
-        var release = token.Type == JTokenType.Array
-            ? token.Children<JObject>().FirstOrDefault(r =>
-                !(r.Value<bool?>("draft") ?? false) &&
-                (includePrerelease || !(r.Value<bool?>("prerelease") ?? false)))
-            : token as JObject;
-        if (release == null)
+        if (token.Type != JTokenType.Array)
         {
             return null;
         }
 
-        var tag = release.Value<string>("tag_name")?.Trim();
-        if (string.IsNullOrWhiteSpace(tag))
+        foreach (var release in token.Children<JObject>())
         {
-            return null;
+            if (release.Value<bool?>("draft") ?? false)
+            {
+                continue;
+            }
+
+            if (!includePrerelease && (release.Value<bool?>("prerelease") ?? false))
+            {
+                continue;
+            }
+
+            var tag = release.Value<string>("tag_name")?.Trim();
+            if (string.IsNullOrWhiteSpace(tag) || !IsManagerReleaseTag(tag))
+            {
+                continue;
+            }
+
+            var assets = release["assets"] as JArray;
+            var zipAsset = TryPickManagerZipAsset(assets);
+            if (zipAsset == null)
+            {
+                continue;
+            }
+
+            var downloadUrl = zipAsset.Value<string>("browser_download_url");
+            var assetName = zipAsset.Value<string>("name");
+            if (string.IsNullOrWhiteSpace(downloadUrl) || string.IsNullOrWhiteSpace(assetName))
+            {
+                continue;
+            }
+
+            return new ManagerReleaseInfo(
+                TagName: tag,
+                Name: release.Value<string>("name") ?? tag,
+                HtmlUrl: release.Value<string>("html_url") ?? string.Empty,
+                DownloadUrl: downloadUrl,
+                AssetName: assetName);
         }
 
-        var assets = release["assets"] as JArray;
-        var zipAsset = assets?.Children<JObject>().FirstOrDefault(a =>
+        return null;
+    }
+
+    private static bool IsManagerReleaseTag(string tag)
+    {
+        if (tag.StartsWith("editor-", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (tag.StartsWith("manager-", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Legacy manager tags: v1.2.3
+        return tag.StartsWith("v", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static JObject? TryPickManagerZipAsset(JArray? assets)
+    {
+        return assets?.Children<JObject>().FirstOrDefault(a =>
+        {
+            var name = a.Value<string>("name") ?? string.Empty;
+            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                !name.Contains("IcarusServerManager", StringComparison.OrdinalIgnoreCase) ||
+                !name.Contains("win", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            // Prefer manager track zips when both tools share the same release page.
+            return name.Contains("manager-", StringComparison.OrdinalIgnoreCase) ||
+                   !name.Contains("ProspectEditor", StringComparison.OrdinalIgnoreCase);
+        }) ?? assets?.Children<JObject>().FirstOrDefault(a =>
         {
             var name = a.Value<string>("name") ?? string.Empty;
             return name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) &&
@@ -56,24 +117,6 @@ internal sealed class ManagerUpdateService
                    name.Contains("win", StringComparison.OrdinalIgnoreCase);
         }) ?? assets?.Children<JObject>().FirstOrDefault(a =>
             (a.Value<string>("name") ?? string.Empty).EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-        if (zipAsset == null)
-        {
-            return null;
-        }
-
-        var downloadUrl = zipAsset.Value<string>("browser_download_url");
-        var assetName = zipAsset.Value<string>("name");
-        if (string.IsNullOrWhiteSpace(downloadUrl) || string.IsNullOrWhiteSpace(assetName))
-        {
-            return null;
-        }
-
-        return new ManagerReleaseInfo(
-            TagName: tag,
-            Name: release.Value<string>("name") ?? tag,
-            HtmlUrl: release.Value<string>("html_url") ?? string.Empty,
-            DownloadUrl: downloadUrl,
-            AssetName: assetName);
     }
 
     public async Task DownloadAssetAsync(string url, string destinationPath, CancellationToken ct)
@@ -89,6 +132,11 @@ internal sealed class ManagerUpdateService
     public static bool TryParseTagVersion(string tag, out Version version)
     {
         var raw = tag.Trim();
+        if (raw.StartsWith("manager-", StringComparison.OrdinalIgnoreCase))
+        {
+            raw = raw["manager-".Length..];
+        }
+
         if (raw.StartsWith("v", StringComparison.OrdinalIgnoreCase))
         {
             raw = raw[1..];

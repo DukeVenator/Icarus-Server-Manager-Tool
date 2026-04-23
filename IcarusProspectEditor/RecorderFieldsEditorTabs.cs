@@ -19,6 +19,7 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
     private ComboBox? _wizardPlayerPicker;
     private Button? _wizardBack;
     private Button? _wizardNext;
+    private readonly Dictionary<string, string> _gridBeforeValues = new(StringComparer.Ordinal);
 
     public RecorderFieldsEditorTabs(BindingList<RecorderFieldRow> rows, IEnumerable<MemberRow> knownPlayers)
     {
@@ -90,6 +91,10 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
                 return;
             }
 
+            var key = $"{e.RowIndex}:{e.ColumnIndex}";
+            var before = grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            _gridBeforeValues[key] = before;
+
             if (!_rows[e.RowIndex].Editable && e.ColumnIndex == 2)
             {
                 e.Cancel = true;
@@ -103,6 +108,26 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
+        };
+        grid.CellValueChanged += (_, e) =>
+        {
+            if (e.RowIndex < 0 || e.RowIndex >= _rows.Count || e.ColumnIndex < 0 || e.ColumnIndex >= grid.Columns.Count)
+            {
+                return;
+            }
+
+            var key = $"{e.RowIndex}:{e.ColumnIndex}";
+            var before = _gridBeforeValues.TryGetValue(key, out var prior) ? prior : "<unknown>";
+            var after = grid.Rows[e.RowIndex].Cells[e.ColumnIndex].Value?.ToString() ?? string.Empty;
+            var row = _rows[e.RowIndex];
+            var column = grid.Columns[e.ColumnIndex].DataPropertyName;
+            if (string.IsNullOrWhiteSpace(column))
+            {
+                column = grid.Columns[e.ColumnIndex].Name;
+            }
+
+            AppLogService.UserAction($"Recorder field edited: {row.Path} [{column}] '{before}' -> '{after}'.");
+            _gridBeforeValues.Remove(key);
         };
 
         page.Controls.Add(grid);
@@ -159,6 +184,8 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
 
         ApplyWizardValue();
         _wizardIndex = Math.Clamp(_wizardIndex + delta, 0, _wizardRows.Count - 1);
+        var row = _wizardRows[_wizardIndex];
+        AppLogService.UserAction($"Recorder wizard navigate: index={_wizardIndex + 1}/{_wizardRows.Count} path={row.Path}");
         RefreshWizard();
     }
 
@@ -169,7 +196,14 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
             return;
         }
 
-        _wizardRows[_wizardIndex].Value = _wizardValue.Text;
+        var row = _wizardRows[_wizardIndex];
+        var before = row.Value ?? string.Empty;
+        var after = _wizardValue.Text;
+        row.Value = after;
+        if (!string.Equals(before, after, StringComparison.Ordinal))
+        {
+            AppLogService.UserAction($"Recorder wizard apply: {row.Path} '{before}' -> '{after}'.");
+        }
     }
 
     private void RefreshWizard()
@@ -258,6 +292,7 @@ internal sealed class RecorderFieldsEditorTabs : UserControl
         }
 
         _wizardRows[_wizardIndex].Value = value;
+        AppLogService.UserAction($"Recorder wizard player picker: {_wizardRows[_wizardIndex].Path} -> '{value}'.");
     }
 
     private List<string> BuildPlayerCandidates(string path)

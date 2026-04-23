@@ -60,7 +60,7 @@ public sealed class TalentIconDiskImageCacheTests
     }
 
     [Fact]
-    public void GetOrLoad_decodes_repo_bundled_webp_when_available()
+    public void GetOrLoad_decodes_repo_bundled_png_when_available()
     {
         var dir = TryFindRepoTalentAssetsDir();
         if (dir is null)
@@ -68,18 +68,18 @@ public sealed class TalentIconDiskImageCacheTests
             return;
         }
 
-        var webp = Path.Combine(dir, "icons", "T_Talent_Base_Health.webp");
-        Assert.True(File.Exists(webp), "Repo should include harvested T_Talent_Base_Health.webp.");
+        var png = Path.Combine(dir, "icons", "T_Talent_Base_Health.png");
+        Assert.True(File.Exists(png), "Repo should include harvested T_Talent_Base_Health.png.");
 
         using var cache = new TalentIconDiskImageCache();
-        var img = cache.GetOrLoad(webp);
+        var img = cache.GetOrLoad(png);
         if (img is null)
         {
-            // System.Drawing WebP decode is not guaranteed on all CI / headless hosts.
+            // System.Drawing decode can fail on some CI / headless hosts.
             return;
         }
 
-        Assert.Same(img, cache.GetOrLoad(webp));
+        Assert.Same(img, cache.GetOrLoad(png));
     }
 
     private static string? TryFindRepoTalentAssetsDir()

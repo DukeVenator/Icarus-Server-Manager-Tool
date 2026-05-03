@@ -288,7 +288,7 @@ public partial class Form1 : Form
             }
 
             var current = GetCurrentManagerVersion();
-            if (!ManagerUpdateService.TryParseTagVersion(rel.TagName, out var latest))
+            if (!ManagerUpdateService.TryParseTagVersion(rel.TagName, out var rawLatest))
             {
                 if (userInitiated)
                 {
@@ -298,11 +298,19 @@ public partial class Form1 : Form
                 return;
             }
 
+            // Same normalization as <see cref="GetCurrentManagerVersion"/> so tag vs assembly compares reliably.
+            var latest = new Version(rawLatest.Major, rawLatest.Minor, Math.Max(0, rawLatest.Build), 0);
+
             if (latest <= current)
             {
                 if (userInitiated)
                 {
-                    MessageBox.Show(this, $"You're already on the latest version ({current}).", "Manager updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(
+                        this,
+                        $"You're already on the latest manager build.\n\nEmbedded version (this exe): v{current}\nGitHub tag: {rel.TagName}",
+                        "Manager updates",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
                 }
 
                 return;
@@ -319,7 +327,7 @@ public partial class Form1 : Form
             {
                 var prompt = MessageBox.Show(
                     this,
-                    $"A newer manager release is available.\n\nCurrent: v{current}\nLatest: {rel.TagName}\n\nDownload, install, and restart now?",
+                    $"A newer manager release is available.\n\nEmbedded version (this exe): v{current}\nLatest on GitHub: {rel.TagName}\n\nDownload, install, and restart now?",
                     "Manager update available",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information,
@@ -355,6 +363,13 @@ public partial class Form1 : Form
         }
 
         return new Version(v.Major, v.Minor, Math.Max(0, v.Build), 0);
+    }
+
+    /// <summary>Keeps footer text aligned with <see cref="GetCurrentManagerVersion"/> (same source as update checks).</summary>
+    private void ApplyManagerVersionFooter()
+    {
+        var v = GetCurrentManagerVersion();
+        copyrightLabel.Text = $"v{v.Major}.{v.Minor}.{v.Build} | Icarus Server Manager";
     }
 
     private async Task DownloadAndInstallManagerUpdateAsync(ManagerReleaseInfo release)

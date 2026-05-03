@@ -271,9 +271,7 @@ public partial class Form1 : Form
             TextBox text when int.TryParse(text.Text, out var n) => n,
             _ => fallback
         };
-        }
-
-        public delegate void InvokeConsoleWrite(string text);
+    }
 
     private static string Prompt(string text, string caption, string defaultValue)
     {

@@ -4,9 +4,9 @@ name: release-manager
 # workflow_dispatch runs tests + publish and uploads a build artifact (no GitHub Release).
 # Tag pushes create a GitHub Release + IcarusServerManager-<tag>-win-x64.zip and update README (<!-- MANAGER_RELEASE_BLOCK -->).
 #
-# Before tagging manager-vX.Y.Z, bump IcarusServerManager.csproj <Version>, <AssemblyVersion>, and <FileVersion>
-# to X.Y.Z so in-app update checks (and Windows file properties) match the GitHub tag; otherwise users stay on an
-# old embedded version and the updater prompt never clears.
+# Tag pushes run scripts/Set-ManagerReleaseBuildOutputs.ps1 and pass -p:Version / -p:AssemblyVersion / -p:FileVersion
+# (and InformationalVersion) into dotnet build + dotnet publish so the exe matches the tag without manually editing
+# IcarusServerManager.csproj. Tags must look like manager-v1.2.3 or v1.2.3 (three-part numeric semver only).
 
 on:
   push:
@@ -28,6 +28,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set manager release build outputs from tag
+        id: mgrrel
+        shell: pwsh
+        run: ./scripts/Set-ManagerReleaseBuildOutputs.ps1 -RefName "${{ github.ref_name }}" -Sha "${{ github.sha }}"
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v5
         with:
@@ -37,7 +42,22 @@ jobs:
         run: dotnet restore IcarusServerManager.sln
 
       - name: Build
-        run: dotnet build IcarusServerManager.sln --configuration Release --no-restore
+        shell: pwsh
+        env:
+          APPLY: ${{ steps.mgrrel.outputs.apply }}
+          SEMVER: ${{ steps.mgrrel.outputs.semver }}
+          ASM: ${{ steps.mgrrel.outputs.assembly_version }}
+          INFO: ${{ steps.mgrrel.outputs.informational }}
+        run: |
+          if ($env:APPLY -eq 'true') {
+            dotnet build IcarusServerManager.sln --configuration Release --no-restore `
+              -p:Version=$env:SEMVER `
+              -p:AssemblyVersion=$env:ASM `
+              -p:FileVersion=$env:ASM `
+              -p:InformationalVersion=$env:INFO
+          } else {
+            dotnet build IcarusServerManager.sln --configuration Release --no-restore
+          }
 
       - name: Test
         run: dotnet test IcarusServerManager.sln --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory "${{ github.workspace }}/TestResults"
@@ -69,13 +89,35 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Set manager release build outputs from tag
+        id: mgrrel
+        shell: pwsh
+        run: ./scripts/Set-ManagerReleaseBuildOutputs.ps1 -RefName "${{ github.ref_name }}" -Sha "${{ github.sha }}"
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
       - name: Publish (win-x64, framework-dependent)
-        run: dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false -o "${{ github.workspace }}/publish" --verbosity minimal
+        shell: pwsh
+        env:
+          APPLY: ${{ steps.mgrrel.outputs.apply }}
+          SEMVER: ${{ steps.mgrrel.outputs.semver }}
+          ASM: ${{ steps.mgrrel.outputs.assembly_version }}
+          INFO: ${{ steps.mgrrel.outputs.informational }}
+        run: |
+          if ($env:APPLY -eq 'true') {
+            dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false `
+              -o "${{ github.workspace }}/publish" --verbosity minimal `
+              -p:Version=$env:SEMVER `
+              -p:AssemblyVersion=$env:ASM `
+              -p:FileVersion=$env:ASM `
+              -p:InformationalVersion=$env:INFO
+          } else {
+            dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-x64 --self-contained false `
+              -o "${{ github.workspace }}/publish" --verbosity minimal
+          }
 
       - name: Zip publish folder
         shell: pwsh

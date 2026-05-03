@@ -168,7 +168,7 @@ namespace IcarusServerManager
             copyrightLabel.Name = "copyrightLabel";
             copyrightLabel.Size = new Size(694, 15);
             copyrightLabel.TabIndex = 3;
-            copyrightLabel.Text = "v1.0.8 | Icarus Server Manager | Tested: Icarus build 230";
+            copyrightLabel.Text = "Icarus Server Manager";
             copyrightLabel.TextAlign = ContentAlignment.TopRight;
             // 
             // settingsTabControl

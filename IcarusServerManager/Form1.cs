@@ -75,6 +75,7 @@ public partial class Form1 : Form
         public Form1()
         {
             InitializeComponent();
+            ApplyManagerVersionFooter();
         logger.OnLog += n => WriteToConsole(n.Line, n.IsGameProcessOutput);
         Text = "Icarus Server Manager";
         MinimumSize = new Size(980, 700);

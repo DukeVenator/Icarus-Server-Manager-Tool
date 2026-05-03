@@ -13,7 +13,7 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 - **Icarus Prospect Editor**: edit prospect JSON safely with validation, backups, and advanced mount tooling.
 
 <!-- MANAGER_RELEASE_BLOCK -->
-**Latest Server Manager release:** [manager-v2.0.1](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/manager-v2.0.1) — on that page, download **IcarusServerManager-manager-v2.0.1-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
+**Latest Server Manager release:** [manager-v2.0.2](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/manager-v2.0.2) — on that page, download **IcarusServerManager-manager-v2.0.2-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
 <!-- /MANAGER_RELEASE_BLOCK -->
 
 <!-- EDITOR_RELEASE_BLOCK -->

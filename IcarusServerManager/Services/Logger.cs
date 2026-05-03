@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace IcarusServerManager.Services;
 
 internal readonly record struct LogNotification(string Line, bool IsGameProcessOutput);
@@ -42,7 +44,22 @@ internal sealed class Logger
         lock (_lock)
         {
             var path = Path.Combine(_logFolder, $"manager-{DateTime.Now:yyyyMMdd}.log");
-            File.AppendAllText(path, line + Environment.NewLine);
+            try
+            {
+                using var stream = new FileStream(
+                    path,
+                    FileMode.Append,
+                    FileAccess.Write,
+                    FileShare.ReadWrite,
+                    bufferSize: 4096,
+                    FileOptions.None);
+                using var writer = new StreamWriter(stream, Encoding.UTF8);
+                writer.WriteLine(line);
+            }
+            catch (IOException)
+            {
+                // Another process may hold the log (e.g. tail viewer); avoid crashing the UI thread.
+            }
         }
 
         var gameFlag = isGameProcessOutput && string.Equals(level, "INFO", StringComparison.Ordinal);

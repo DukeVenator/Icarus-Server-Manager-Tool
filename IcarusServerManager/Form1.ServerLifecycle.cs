@@ -71,11 +71,54 @@ public partial class Form1 : Form
         serverStarted = false;
         _serverReadyAnnounced = 0;
         playerTracker.Clear();
-        UpdateStatus("Idle");
-        ChangeStartButton("Start Server");
-        startServerButton.BackColor = Color.Maroon;
-        forceKillServerButton.Enabled = false;
-        ApplyTheme();
+
+        void applyExitUi()
+        {
+            if (IsDisposed || Disposing)
+            {
+                return;
+            }
+
+            try
+            {
+                UpdateStatus("Idle");
+                ChangeStartButton("Start Server");
+                startServerButton.BackColor = Color.Maroon;
+                forceKillServerButton.Enabled = false;
+                ApplyTheme();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Form or child controls disposed while applying exit UI.
+            }
+        }
+
+        try
+        {
+            if (IsDisposed || Disposing)
+            {
+                return;
+            }
+
+            if (IsHandleCreated && InvokeRequired)
+            {
+                BeginInvoke(applyExitUi);
+            }
+            else
+            {
+                applyExitUi();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
+        catch (InvalidOperationException)
+        {
+            // Handle destroyed; cannot marshal to UI thread.
+            return;
+        }
+
         if (wasRunning && !restartInProgress)
         {
             crashDetected = true;
@@ -658,25 +701,84 @@ public partial class Form1 : Form
 
         private void UpdateStatus(string text)
         {
-            if (serverStatusBox.InvokeRequired)
+            try
             {
-            serverStatusBox.Invoke(new InvokeConsoleWrite(UpdateStatus), text);
+                if (IsDisposed || Disposing || serverStatusBox.IsDisposed)
+                {
+                    return;
+                }
+
+                void apply()
+                {
+                    if (IsDisposed || Disposing || serverStatusBox.IsDisposed)
+                    {
+                        return;
+                    }
+
+                    serverStatusBox.Text = text;
+                }
+
+                if (!IsHandleCreated)
+                {
+                    return;
+                }
+
+                if (InvokeRequired)
+                {
+                    Invoke(apply);
+                }
+                else
+                {
+                    apply();
+                }
             }
-            else
+            catch (ObjectDisposedException)
             {
-                serverStatusBox.Text = text;
+            }
+            catch (InvalidOperationException)
+            {
+                // No valid window handle.
             }
         }
 
         private void ChangeStartButton(string text)
         {
-            if (startServerButton.InvokeRequired)
+            try
             {
-            startServerButton.Invoke(new InvokeConsoleWrite(ChangeStartButton), text);
+                if (IsDisposed || Disposing || startServerButton.IsDisposed)
+                {
+                    return;
+                }
+
+                void apply()
+                {
+                    if (IsDisposed || Disposing || startServerButton.IsDisposed)
+                    {
+                        return;
+                    }
+
+                    startServerButton.Text = text;
+                }
+
+                if (!IsHandleCreated)
+                {
+                    return;
+                }
+
+                if (InvokeRequired)
+                {
+                    Invoke(apply);
+                }
+                else
+                {
+                    apply();
+                }
             }
-            else
+            catch (ObjectDisposedException)
             {
-                startServerButton.Text = text;
+            }
+            catch (InvalidOperationException)
+            {
             }
         }
 

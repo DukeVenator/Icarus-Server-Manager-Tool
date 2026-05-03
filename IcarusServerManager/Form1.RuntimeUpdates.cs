@@ -307,7 +307,7 @@ public partial class Form1 : Form
                 {
                     MessageBox.Show(
                         this,
-                        $"You're already on the latest manager build.\n\nEmbedded version (this exe): v{current}\nGitHub tag: {rel.TagName}",
+                        $"You're already on the latest manager build.\n\nCurrent version: v{current}\nLatest: {rel.TagName}",
                         "Manager updates",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -327,7 +327,7 @@ public partial class Form1 : Form
             {
                 var prompt = MessageBox.Show(
                     this,
-                    $"A newer manager release is available.\n\nEmbedded version (this exe): v{current}\nLatest on GitHub: {rel.TagName}\n\nDownload, install, and restart now?",
+                    $"A newer manager release is available.\n\nCurrent version: v{current}\nLatest: {rel.TagName}\n\nDownload, install, and restart now?",
                     "Manager update available",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Information,

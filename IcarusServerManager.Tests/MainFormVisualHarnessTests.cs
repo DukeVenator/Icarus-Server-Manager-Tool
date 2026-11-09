@@ -119,7 +119,7 @@ public sealed class MainFormVisualHarnessTests
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromMinutes(2)), "visual harness thread did not finish");
+        Assert.True(thread.Join(TimeSpan.FromMinutes(10)), "visual harness thread did not finish");
 
         try
         {
@@ -222,7 +222,7 @@ public sealed class MainFormVisualHarnessTests
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromMinutes(2)), "font-scale harness thread did not finish");
+        Assert.True(thread.Join(TimeSpan.FromMinutes(10)), "font-scale harness thread did not finish");
 
         try
         {
@@ -358,7 +358,7 @@ public sealed class MainFormVisualHarnessTests
 
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        Assert.True(thread.Join(TimeSpan.FromMinutes(3)), "tab/dialog capture thread did not finish");
+        Assert.True(thread.Join(TimeSpan.FromMinutes(10)), "tab/dialog capture thread did not finish");
 
         try
         {

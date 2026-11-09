@@ -2,6 +2,7 @@ using IcarusServerManager.Models;
 using IcarusServerManager.Services;
 using IcarusServerManager.UI;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -49,23 +50,74 @@ public partial class Form1 : Form
 
     private void LoadPersistedData()
     {
-        managerOptions = optionsService.Load();
+        var optionsLoadFailed = false;
+        try
+        {
+            managerOptions = optionsService.Load(
+                () => (Properties.Settings.Default.gamePort, Properties.Settings.Default.queryPort));
+        }
+        catch (InvalidDataException ex)
+        {
+            // The malformed file is intentionally left untouched. Defaults apply to this session
+            // in memory only; no automatic save is allowed to replace the user's file.
+            optionsLoadFailed = true;
+            logger.Error("Manager options could not be loaded.", ex);
+            MessageBox.Show(
+                this,
+                $"{ex.Message}\n\nThe existing file was left unchanged. Default settings are in use for this session only and are not saved automatically.",
+                "Manager settings",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            managerOptions = new ManagerOptions();
+        }
+
+        _optionsLoadFailed = optionsLoadFailed;
+
         NormalizeConsoleLogPresetName(managerOptions);
-        MigrateLaunchArgumentsFromLegacySettingsIfNeeded();
         EnsureLaunchArgumentsValidOrDefault();
         serverLocationBox.Text = Properties.Settings.Default.serverLocation;
         serverNameBox.Text = Properties.Settings.Default.serverName;
         queryPortBox.Text = Properties.Settings.Default.queryPort.ToString();
         gamePortBox.Text = Properties.Settings.Default.gamePort.ToString();
-        restartTimeBox.SelectedIndex = Math.Clamp((Properties.Settings.Default.restartInterval / 60) - 1, 0, restartTimeBox.Items.Count - 1);
+        SetRestartIntervalSelection(optionsLoadFailed);
         LoadManagerOptionsToUi();
         LoadIniToUi();
         SyncLegacyPortTextBoxesFromManagerOptions();
     }
 
     /// <summary>
+    /// Selects the legacy restart interval without letting its change handler persist manager
+    /// options. That handler is an automatic save; after a failed load it would overwrite the
+    /// malformed file with in-memory defaults.
+    /// </summary>
+    private void SetRestartIntervalSelection(bool suppressAutoSave)
+    {
+        var index = Math.Clamp((Properties.Settings.Default.restartInterval / 60) - 1, 0, restartTimeBox.Items.Count - 1);
+        if (!suppressAutoSave)
+        {
+            restartTimeBox.SelectedIndex = index;
+            return;
+        }
+
+        // The designer handler is declared with a non-nullable sender; the compiler warns about the
+        // delegate nullability difference when it is added/removed explicitly.
+#pragma warning disable CS8622
+        restartTimeBox.SelectedIndexChanged -= restartTimeBox_SelectedIndexChanged;
+        try
+        {
+            restartTimeBox.SelectedIndex = index;
+        }
+        finally
+        {
+            restartTimeBox.SelectedIndexChanged += restartTimeBox_SelectedIndexChanged;
+        }
+#pragma warning restore CS8622
+    }
+
+    /// <summary>
     /// Ports and -Log were historically split between Application Settings and manager JSON; they are
-    /// manager-owned (not ServerSettings.ini). One-time copy from legacy settings when options file predates schema 4.
+    /// manager-owned (not ServerSettings.ini). The legacy copy runs inside the ordered migration
+    /// pipeline in <see cref="ManagerOptionsService"/> before the schema-4 guard is applied.
     /// </summary>
     private static void NormalizeConsoleLogPresetName(ManagerOptions o)
     {
@@ -79,19 +131,6 @@ public partial class Form1 : Form
         }
 
         o.ConsoleLogPreset = "Balanced";
-    }
-
-    private void MigrateLaunchArgumentsFromLegacySettingsIfNeeded()
-    {
-        if (managerOptions.OptionsSchemaVersion >= 4)
-        {
-            return;
-        }
-
-        managerOptions.LaunchGamePort = Properties.Settings.Default.gamePort;
-        managerOptions.LaunchQueryPort = Properties.Settings.Default.queryPort;
-        managerOptions.OptionsSchemaVersion = 4;
-        optionsService.Save(managerOptions);
     }
 
     private static void EnsureLaunchArgumentsValidOrDefault(ManagerOptions o)
@@ -124,7 +163,7 @@ public partial class Form1 : Form
         managerOptions.LaunchQueryPort = Math.Clamp(GetInt("LaunchQueryPort", managerOptions.LaunchQueryPort), 1, 65535);
         managerOptions.LaunchLogPath = GetString("LaunchLogPath", managerOptions.LaunchLogPath);
         EnsureLaunchArgumentsValidOrDefault();
-        optionsService.Save(managerOptions);
+        PersistManagerOptions(userInitiated: false);
         SyncLegacyPortTextBoxesFromManagerOptions();
     }
 
@@ -200,6 +239,50 @@ public partial class Form1 : Form
         UpdateConsoleAutoScrollButtonAppearance();
     }
 
+    /// <summary>
+    /// Releases the webhook HTTP client once the form is really closing. Safe to call more than once.
+    /// </summary>
+    private void DisposeAutomationServiceOnClose()
+    {
+        try
+        {
+            automationService.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Could not dispose the automation service while closing.", ex);
+        }
+    }
+
+    /// <summary>
+    /// True when the options file existed but could not be parsed at startup. Automatic saves are
+    /// suppressed in that state so the user's unreadable file is never silently replaced by
+    /// in-memory defaults; an explicit settings save or an import may still replace it.
+    /// </summary>
+    private bool _optionsLoadFailed;
+
+    /// <summary>
+    /// Single write path for manager options. Returns false when the write was deliberately skipped.
+    /// </summary>
+    private bool PersistManagerOptions(bool userInitiated)
+    {
+        if (_optionsLoadFailed && !userInitiated)
+        {
+            logger.Warn("Manager options were not loaded at startup; automatic save skipped to preserve the existing file.");
+            UpdateStatus("Settings not saved — the manager settings file could not be read.");
+            return false;
+        }
+
+        if (_optionsLoadFailed)
+        {
+            _optionsLoadFailed = false;
+            logger.Info("Replacing the unreadable manager options file after an explicit user save or import.");
+        }
+
+        optionsService.Save(managerOptions);
+        return true;
+    }
+
     private void SaveManagerOptionsFromUi(bool isExplicitSave)
     {
         managerOptions.Theme = GetString("Theme", "Dark");
@@ -261,7 +344,21 @@ public partial class Form1 : Form
         managerOptions.DiscordWebhookAvatarUrl = GetString("DiscordWebhookAvatarUrl", string.Empty);
         managerOptions.AutoScrollConsole = GetBool("AutoScrollConsole", true);
         managerOptions.UpdateScheduleEnabled = GetBool("UpdateScheduleEnabled", false);
-        managerOptions.UpdateScheduleTime = GetString("UpdateScheduleTime", "04:00");
+        var scheduleText = GetString("UpdateScheduleTime", "04:00").Trim();
+        if (TimeSpan.TryParseExact(scheduleText, @"hh\:mm", CultureInfo.InvariantCulture, out var schedule) &&
+            schedule >= TimeSpan.Zero &&
+            schedule < TimeSpan.FromDays(1))
+        {
+            managerOptions.UpdateScheduleTime = schedule.ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            // The scheduler skips an unparsable time, so reject it here instead of saving a value
+            // that would silently never run.
+            logger.Warn($"Invalid scheduled restart time '{scheduleText}'; keeping '{managerOptions.UpdateScheduleTime}'.");
+            SetControl("UpdateScheduleTime", managerOptions.UpdateScheduleTime);
+            UpdateStatus("Scheduled restart time must be HH:mm — the previous value was kept.");
+        }
         managerOptions.ManagerUpdateCheckEnabled = GetBool("ManagerUpdateCheckEnabled", true);
         managerOptions.ManagerUpdateCheckIntervalHours = Math.Clamp(GetInt("ManagerUpdateCheckIntervalHours", 6), 1, 168);
         managerOptions.ManagerUpdateIncludePrerelease = GetBool("ManagerUpdateIncludePrerelease", false);
@@ -270,7 +367,7 @@ public partial class Form1 : Form
         managerOptions.LaunchQueryPort = Math.Clamp(GetInt("LaunchQueryPort", managerOptions.LaunchQueryPort), 1, 65535);
         managerOptions.LaunchLogPath = GetString("LaunchLogPath", string.Empty);
         SyncConsoleLoggingFromUiToModel();
-        optionsService.Save(managerOptions);
+        PersistManagerOptions(userInitiated: isExplicitSave);
         SyncLegacyPortTextBoxesFromManagerOptions();
         ApplyTheme();
         logger.Info("Manager options saved.");
@@ -581,7 +678,7 @@ public partial class Form1 : Form
             managerOptions = imported.Value.Options;
             NormalizeConsoleLogPresetName(managerOptions);
             EnsureLaunchArgumentsValidOrDefault();
-            optionsService.Save(managerOptions);
+            PersistManagerOptions(userInitiated: true);
             LoadManagerOptionsToUi();
             LoadIniFromModel(currentServerSettings);
             ApplyTheme();
@@ -629,7 +726,7 @@ public partial class Form1 : Form
         managerOptions = loaded.Value.Options;
         NormalizeConsoleLogPresetName(managerOptions);
         EnsureLaunchArgumentsValidOrDefault();
-        optionsService.Save(managerOptions);
+        PersistManagerOptions(userInitiated: true);
         LoadManagerOptionsToUi();
         LoadIniFromModel(currentServerSettings);
         ApplyTheme();

@@ -19,6 +19,14 @@ internal static class MountGeneticsRadarChartConfigurer
         area.AxisY.MajorGrid.Enabled = true;
         area.AxisY.LabelStyle.Font = new Font("Segoe UI", 8.5f);
         area.AxisX.LabelStyle.Font = new Font("Segoe UI", 8.5f);
+
+        // The automatic "0" tick sits at the radar centre and overlaps the plot. Custom labels
+        // replace the automatic set entirely, so spell out 2, 4, 6, 8 and 10 and omit zero.
+        area.AxisY.CustomLabels.Clear();
+        for (var value = 2; value <= 10; value += 2)
+        {
+            area.AxisY.CustomLabels.Add(value - 0.1, value + 0.1, value.ToString());
+        }
     }
 
     /// <summary>Axis/grid/series outline colors so the radar stays readable on dark chart backgrounds.</summary>

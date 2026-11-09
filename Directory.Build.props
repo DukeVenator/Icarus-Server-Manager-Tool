@@ -1,0 +1,21 @@
+<Project>
+
+  <!--
+    Versions come from git tags, not from hand-edited csproj numbers.
+
+    Tag prefixes are per tool: manager releases use `manager-v3.0.0`, editor releases use
+    `editor-v3.0.0`. Untagged commits build as the next prerelease (for example
+    2.0.3-alpha.0.17+<sha>), and the tagged commit builds exactly the tag version.
+
+    MinVer only applies to the shipped apps. Test projects and the vendored save libraries keep the
+    SDK defaults so their assemblies stay stable between releases.
+  -->
+  <PropertyGroup>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'IcarusServerManager' Or '$(MSBuildProjectName)' == 'ManagerUpdater' Or '$(MSBuildProjectName)' == 'IcarusProspectEditor'">
+    <PackageReference Include="MinVer" Version="6.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

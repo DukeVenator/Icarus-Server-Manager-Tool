@@ -3,10 +3,12 @@ using Newtonsoft.Json;
 
 namespace IcarusServerManager.Services;
 
-internal sealed class AutomationService
+internal sealed class AutomationService : IDisposable
 {
     private readonly string _profileFolder;
-    private static readonly HttpClient HttpClient = new();
+    private readonly HttpClient _httpClient;
+    private readonly Action<string>? _diagnostics;
+    private bool _disposed;
     private static readonly JsonSerializerSettings WebhookJsonSettings = new()
     {
         NullValueHandling = NullValueHandling.Ignore
@@ -17,23 +19,30 @@ internal sealed class AutomationService
     private static long _lastGameplayWebhookTick;
     private static readonly object GameplayThrottleLock = new();
 
-    static AutomationService()
-    {
-        HttpClient.Timeout = TimeSpan.FromSeconds(20);
-    }
-
     public AutomationService()
+        : this(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "profiles"), null, null)
     {
-        _profileFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "profiles");
-        Directory.CreateDirectory(_profileFolder);
     }
 
     /// <summary>For tests: use a dedicated profile directory.</summary>
     public AutomationService(string profileFolder)
+        : this(profileFolder, null, null)
+    {
+    }
+
+    /// <summary>
+    /// For tests: supply a fake <see cref="HttpMessageHandler"/> so webhook boundaries and failures
+    /// can be exercised without sending live requests. <paramref name="diagnostics"/> receives
+    /// redacted delivery problems (status code and host only).
+    /// </summary>
+    public AutomationService(string profileFolder, HttpMessageHandler? handler, Action<string>? diagnostics = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileFolder);
         _profileFolder = profileFolder;
         Directory.CreateDirectory(_profileFolder);
+        _httpClient = handler is null ? new HttpClient() : new HttpClient(handler, disposeHandler: false);
+        _httpClient.Timeout = TimeSpan.FromSeconds(20);
+        _diagnostics = diagnostics;
     }
 
     public IEnumerable<string> GetProfiles()
@@ -106,7 +115,12 @@ internal sealed class AutomationService
     public Task SendWebhookAsync(ManagerOptions options, string message) =>
         SendWebhookEventAsync(options, DiscordWebhookEventKind.ServerRestart, "Automated server restart", message);
 
-    public async Task SendWebhookEventAsync(
+    /// <summary>
+    /// Sends one webhook event. Returns <see langword="true"/> only when the endpoint accepted the
+    /// request; disabled events, non-success status codes and transport failures return
+    /// <see langword="false"/> and are reported through the diagnostics callback.
+    /// </summary>
+    public async Task<bool> SendWebhookEventAsync(
         ManagerOptions options,
         DiscordWebhookEventKind kind,
         string title,
@@ -115,12 +129,12 @@ internal sealed class AutomationService
     {
         if (!options.EnableDiscordWebhook || string.IsNullOrWhiteSpace(options.DiscordWebhookUrl))
         {
-            return;
+            return false;
         }
 
         if (!IsEventEnabled(options, kind))
         {
-            return;
+            return false;
         }
 
         if (kind == DiscordWebhookEventKind.Chat && options.DiscordWebhookChatThrottleSeconds > 0)
@@ -131,7 +145,7 @@ internal sealed class AutomationService
                 var now = Environment.TickCount64;
                 if (now - _lastChatWebhookTick < minMs)
                 {
-                    return;
+                    return false;
                 }
 
                 _lastChatWebhookTick = now;
@@ -148,7 +162,7 @@ internal sealed class AutomationService
                     var now = Environment.TickCount64;
                     if (now - _lastGameplayWebhookTick < minMs)
                     {
-                        return;
+                        return false;
                     }
 
                     _lastGameplayWebhookTick = now;
@@ -161,12 +175,46 @@ internal sealed class AutomationService
             var body = BuildWebhookPayload(options, kind, title, description, extras);
             var json = JsonConvert.SerializeObject(body, WebhookJsonSettings);
             using var payload = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-            await HttpClient.PostAsync(options.DiscordWebhookUrl, payload).ConfigureAwait(false);
+            using var response = await _httpClient.PostAsync(options.DiscordWebhookUrl, payload).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Host and status only: the URL path/token and the response body are never logged.
+                _diagnostics?.Invoke(
+                    $"Discord webhook delivery to '{DescribeHost(options.DiscordWebhookUrl)}' failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}).");
+                return false;
+            }
+
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // Intentionally no throw; callers may run on background threads.
+            // The URL, token, payload, and response body are never included in the diagnostic.
+            _diagnostics?.Invoke(
+                $"Discord webhook delivery to '{DescribeHost(options.DiscordWebhookUrl)}' failed: {ex.GetType().Name}.");
+            return false;
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _httpClient.Dispose();
+    }
+
+    /// <summary>Returns only the host of a webhook URL so diagnostics cannot leak the secret path/token.</summary>
+    internal static string DescribeHost(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return "unconfigured";
+        }
+
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : "invalid-url";
     }
 
     private static bool IsEventEnabled(ManagerOptions o, DiscordWebhookEventKind kind) =>
@@ -389,14 +437,18 @@ internal sealed class AutomationService
         return list.Count == 0 ? null : list.ToArray();
     }
 
+    /// <summary>
+    /// Truncates to at most <paramref name="max"/> characters including the trailing ellipsis, so a
+    /// caller that enforces a platform limit cannot exceed it by one.
+    /// </summary>
     private static string Truncate(string s, int max)
     {
-        if (string.IsNullOrEmpty(s))
+        if (string.IsNullOrEmpty(s) || max <= 0)
         {
             return string.Empty;
         }
 
-        return s.Length <= max ? s : s[..max] + "…";
+        return s.Length <= max ? s : string.Concat(s.AsSpan(0, max - 1), "…");
     }
 
     private static string SanitizeForDiscordBody(string s, int maxLen)

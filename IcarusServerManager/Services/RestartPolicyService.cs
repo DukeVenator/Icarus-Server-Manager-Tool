@@ -2,21 +2,61 @@ using IcarusServerManager.Models;
 
 namespace IcarusServerManager.Services;
 
+/// <summary>
+/// Explicit outcome of the crash-restart budget. Callers previously had to infer intent from
+/// <see cref="RestartDecision.ShouldRestart"/> alone, which made "budget left", "a retry is already
+/// pending" and "budget used up" indistinguishable.
+/// </summary>
+internal enum CrashRestartState
+{
+    /// <summary>No crash was part of this evaluation.</summary>
+    NotCrashed = 0,
+
+    /// <summary>The crash budget has room and no retry has been authorized for this crash yet.</summary>
+    StartAllowed,
+
+    /// <summary>
+    /// The crash budget has room, but a restart was already authorized for this crash episode and
+    /// the replacement has not reported back yet. The caller still wants a retry, but must not
+    /// start a second process: use the lifecycle guard to serialize the launch.
+    /// </summary>
+    RetryPending,
+
+    /// <summary>The configured crash-attempt budget is used up; the server is left stopped.</summary>
+    Exhausted
+}
+
 internal sealed class RestartDecision
 {
     public bool ShouldRestart { get; init; }
     public bool ShouldWarn { get; init; }
     public string Reason { get; init; } = string.Empty;
+
+    /// <summary>Crash-budget outcome for this evaluation; see <see cref="CrashRestartState"/>.</summary>
+    public CrashRestartState CrashState { get; init; } = CrashRestartState.NotCrashed;
 }
 
 internal sealed class RestartPolicyService
 {
+    /// <summary>
+    /// PROVISIONAL: ten minutes is an engineering placeholder for "a run was stable". Product has
+    /// not approved this value, so it must not be treated as a support contract or exposed as a
+    /// user-facing promise until that decision is recorded.
+    /// </summary>
+    private const int StableRunMinutes = 10;
+
+    /// <summary>Uptime that must pass, without a crash, before crash attempts are cleared.</summary>
+    public static readonly TimeSpan StableRunInterval = TimeSpan.FromMinutes(StableRunMinutes);
+
     private DateTime _nextIntervalWarningAt = DateTime.MinValue;
     private int _crashAttempts;
+    private bool _crashRestartPending;
     private DateTime _highMemorySince = DateTime.MinValue;
     private DateTime _emptySince = DateTime.MinValue;
     private DateTime _intervalPauseStarted = DateTime.MinValue;
     private TimeSpan _intervalPausedTotal = TimeSpan.Zero;
+
+    public int CrashAttempts => _crashAttempts;
 
     public RestartDecision Evaluate(
         ManagerOptions options,
@@ -27,13 +67,47 @@ internal sealed class RestartPolicyService
         double memoryMb,
         bool maybeEmptyFromLogs)
     {
+        // Only a successful, non-crashed run may clear the crash history. Clearing it for a crashed
+        // evaluation (even after long uptime) erased the evidence of repeated crashes and refilled
+        // the retry budget during a crash loop.
+        var stableRun = serverStarted && !crashed && now - startTime >= StableRunInterval;
+        if (stableRun)
+        {
+            _crashAttempts = 0;
+        }
+
+        if (!crashed)
+        {
+            // The crash episode is over. A later crash is a new decision and gets a fresh start
+            // grant; the attempt history itself is only cleared by a stable run above.
+            _crashRestartPending = false;
+        }
+
         if (crashed && options.CrashRestartEnabled)
         {
             _crashAttempts++;
             if (_crashAttempts <= options.CrashRestartMaxAttempts)
             {
-                return new RestartDecision { ShouldRestart = true, Reason = $"Crash policy triggered restart attempt {_crashAttempts}." };
+                var state = _crashRestartPending ? CrashRestartState.RetryPending : CrashRestartState.StartAllowed;
+                _crashRestartPending = true;
+                return new RestartDecision
+                {
+                    // ShouldRestart stays true for a pending retry so callers that only look at the
+                    // booleans keep asking for a replacement; the lifecycle guard prevents a second
+                    // launch while the first retry is unresolved.
+                    ShouldRestart = true,
+                    CrashState = state,
+                    Reason = state == CrashRestartState.StartAllowed
+                        ? $"Crash policy triggered restart attempt {_crashAttempts}."
+                        : $"Crash policy retry pending for restart attempt {_crashAttempts}."
+                };
             }
+
+            return new RestartDecision
+            {
+                CrashState = CrashRestartState.Exhausted,
+                Reason = $"Crash policy exhausted after {_crashAttempts - 1} restart attempt(s); the server is left stopped."
+            };
         }
 
         if (!serverStarted)
@@ -182,5 +256,14 @@ internal sealed class RestartPolicyService
     }
 
     public int GetCrashDelaySeconds(ManagerOptions options) => Math.Max(1, options.CrashRestartRetryDelaySeconds);
-    public void ResetCrashAttempts() => _crashAttempts = 0;
+
+    /// <summary>
+    /// Force-clears crash history. Not part of normal launch flow: only an explicit operator action
+    /// (or a future product-approved reset) should call this, never the start path.
+    /// </summary>
+    public void ResetCrashAttempts()
+    {
+        _crashAttempts = 0;
+        _crashRestartPending = false;
+    }
 }

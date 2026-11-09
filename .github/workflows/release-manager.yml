@@ -27,6 +27,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Set manager release build outputs from tag
         id: mgrrel
@@ -88,6 +89,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: recursive
+          fetch-depth: 0
 
       - name: Set manager release build outputs from tag
         id: mgrrel

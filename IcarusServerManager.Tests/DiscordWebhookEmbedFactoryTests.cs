@@ -62,7 +62,7 @@ public sealed class DiscordWebhookEmbedFactoryTests
         o.DiscordWebhookDescriptionMaxChars = 800;
         var longText = new string('x', 900);
         var t = DiscordWebhookEmbedFactory.TruncateDescription(longText, o);
-        Assert.Equal(801, t.Length);
+        Assert.Equal(800, t.Length);
         Assert.EndsWith("…", t);
     }
 
@@ -73,7 +73,7 @@ public sealed class DiscordWebhookEmbedFactoryTests
         o.DiscordWebhookDescriptionMaxChars = 100; // below min 800 -> clamps to 800
         var longText = new string('z', 900);
         var t = DiscordWebhookEmbedFactory.TruncateDescription(longText, o);
-        Assert.Equal(801, t.Length);
+        Assert.Equal(800, t.Length);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class DiscordWebhookEmbedFactoryTests
         o.DiscordWebhookDescriptionMaxChars = 4096;
         var longText = new string('a', 5000);
         var t = DiscordWebhookEmbedFactory.TruncateDescription(longText, o, hardCap: 100);
-        Assert.Equal(101, t.Length);
+        Assert.Equal(100, t.Length);
         Assert.EndsWith("…", t);
     }
 

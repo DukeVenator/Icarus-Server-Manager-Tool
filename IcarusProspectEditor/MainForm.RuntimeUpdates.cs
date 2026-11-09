@@ -8,11 +8,35 @@ internal sealed partial class MainForm
 {
     private const string EditorMainExeName = "IcarusProspectEditor.exe";
 
+    /// <summary>
+    /// Environment switch used by the UI smoke script and automated runs: it suppresses both the
+    /// startup check and the 30-second timer so a launch cannot block on an update prompt or make a
+    /// network request. It is not a user-facing setting.
+    /// </summary>
+    private const string DisableUpdateCheckEnvironmentVariable = "ICARUS_EDITOR_DISABLE_UPDATE_CHECK";
+
+    private static bool AutomaticUpdateCheckDisabled =>
+        string.Equals(
+            Environment.GetEnvironmentVariable(DisableUpdateCheckEnvironmentVariable),
+            "1",
+            StringComparison.Ordinal);
+
     private void SetupEditorUpdateFlow()
     {
+        if (AutomaticUpdateCheckDisabled)
+        {
+            return;
+        }
+
         _editorUpdateTimer.Tick += (_, _) => _ = TickEditorUpdateCheckAsync();
         _editorUpdateTimer.Start();
-        Load += (_, _) => _ = CheckForEditorUpdateAsync(userInitiated: false);
+        Load += (_, _) =>
+        {
+            if (_updateSettings.UpdateCheckEnabled)
+            {
+                _ = CheckForEditorUpdateAsync(userInitiated: false);
+            }
+        };
     }
 
     private async Task TickEditorUpdateCheckAsync()

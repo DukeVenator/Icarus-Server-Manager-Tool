@@ -22,6 +22,13 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 
 **Last tested with Icarus Dedicated Server build:** 230
 
+> **New in 3.0 — a reliability rewrite.** Both tools were rebuilt around one rule: never claim an
+> operation succeeded before it did. Saves stage and verify before replacing your file, editor drafts
+> survive refreshes and recorder removal, mount and talent edits apply as a single transaction, and
+> the manager keeps ownership of a server it cannot confirm has stopped. The editor also received a
+> full UI refresh, and the screenshots below are anonymised captures of the current build.
+> See [CHANGELOG.md](CHANGELOG.md) for the full list.
+
 ---
 
 ## Pick Your Tool
@@ -57,12 +64,12 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 
 1. Download `IcarusProspectEditor-<tag>-win-x64.zip` from the latest editor release.
 2. Extract and run `IcarusProspectEditor.exe`.
-3. Click **Open Prospect** and select a decoded prospect JSON file.
+3. Click **Open Prospect** and select a decoded prospect JSON file. You can also pass one on the
+   command line: `IcarusProspectEditor.exe "C:\path\to\prospect.json"` (or `--open <path>`).
 4. Edit values in tabs (Metadata, Members, Custom Settings, Mounts).
 5. Click **Save**.
 
 ![Prospect Editor — Metadata tab](screenshots/editor/metadata.png)
-
 ### Important Safety Warning
 
 - Always keep separate backups of your save/prospect files before editing.
@@ -131,7 +138,34 @@ Mounts have a dedicated editor with an **Overview** tab for species swaps with p
 
 ![Mount Editor — Genetics radar view](screenshots/editor/mountradar.png)
 
-More editor views (Members, Characters / Recorder Inspector, Diagnostics, Talents, Raw recorder fields) are documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
+![Mount Editor — Talents tab](screenshots/editor/mounttalent.png)
+
+![Mount Editor — Advanced raw fields](screenshots/editor/mountraw.png)
+
+### More editor screenshots
+
+The editor shell keeps all eight tabs, both themes, and a status bar that distinguishes saved,
+edited, and failed operations.
+
+![Editor shell — light theme](screenshots/editor/shell-light.png)
+
+![Editor shell — dark theme](screenshots/editor/shell-dark.png)
+
+![Mounts tab](screenshots/editor/mounts.png)
+
+![Mounts tab — dark theme](screenshots/editor/mounts-dark.png)
+
+| Members | Characters |
+| --- | --- |
+| ![Members tab](screenshots/editor/members.png) | ![Characters tab](screenshots/editor/characters.png) |
+
+![Diagnostics tab](screenshots/editor/diag.png)
+
+![Recorder inspector — dark theme](screenshots/editor/recorder-inspector-dark.png)
+
+More editor views (Members, Characters / Recorder Inspector, Diagnostics, Talents, Raw recorder fields) are also documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
+
+Screenshots are captured from the current build by the visual test harness, so they stay in step with the UI rather than drifting from an old release.
 
 ---
 

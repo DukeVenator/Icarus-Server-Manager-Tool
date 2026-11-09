@@ -19,7 +19,7 @@ public partial class Form1 : Form
         metricsTimer.Tick += (_, _) => UpdateStats();
         updateTimer.Tick += (_, _) =>
         {
-            CheckScheduledUpdate();
+            CheckScheduledRestart();
             _ = TickManagerUpdateCheckAsync();
         };
         heartbeatTimer.Tick += (_, _) => HeartbeatDiscordTick();
@@ -37,8 +37,7 @@ public partial class Form1 : Form
             return;
         }
 
-        var exe = Path.Combine(serverLocationBox.Text.Trim(), "Icarus", "Binaries", "Win64", "IcarusServer-Win64-Shipping.exe");
-        _installPathPreviouslyValid = File.Exists(exe);
+        _installPathPreviouslyValid = File.Exists(GetExpectedServerExecutablePath());
     }
 
     private void HeartbeatDiscordTick()
@@ -71,37 +70,52 @@ public partial class Form1 : Form
 
     private async void EvaluatePolicies()
     {
-        var sample = metricsSampler.Sample(serverProc, startTime);
-        var decision = restartPolicyService.Evaluate(
-            managerOptions,
-            serverStarted,
-            startTime,
-            DateTime.Now,
-            crashed: crashDetected,
-            memoryMb: sample.MemoryMb,
-            maybeEmptyFromLogs: possibleServerEmpty);
-
-        if (decision.ShouldWarn)
+        try
         {
-            logger.Warn(decision.Reason);
-            if (!_discordPolicyWarningActive)
+            // Policy evaluation must not race a start/stop/restart or an install: a crash flag that
+            // is still set while a replacement is being prepared would otherwise burn the retry
+            // budget on every timer tick.
+            if (_lifecycleDepth > 0 || _startInProgress || _installInProgress || _isClosing)
             {
-                _discordPolicyWarningActive = true;
-                PostDiscordWebhook(
-                    DiscordWebhookEventKind.RestartWarning,
-                    "Heads-up",
-                    DiscordWebhookEmbedFactory.TruncateDescription(decision.Reason, managerOptions),
-                    DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+                return;
+            }
+
+            var sample = metricsSampler.Sample(serverProc, startTime);
+            var decision = restartPolicyService.Evaluate(
+                managerOptions,
+                serverStarted,
+                startTime,
+                DateTime.Now,
+                crashed: crashDetected,
+                memoryMb: sample.MemoryMb,
+                maybeEmptyFromLogs: possibleServerEmpty);
+
+            if (decision.ShouldWarn)
+            {
+                logger.Warn(decision.Reason);
+                if (!_discordPolicyWarningActive)
+                {
+                    _discordPolicyWarningActive = true;
+                    PostDiscordWebhook(
+                        DiscordWebhookEventKind.RestartWarning,
+                        "Heads-up",
+                        DiscordWebhookEmbedFactory.TruncateDescription(decision.Reason, managerOptions),
+                        DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+                }
+            }
+            else
+            {
+                _discordPolicyWarningActive = false;
+            }
+
+            if (decision.ShouldRestart)
+            {
+                await RestartServerAsync(decision.Reason);
             }
         }
-        else
+        catch (Exception ex)
         {
-            _discordPolicyWarningActive = false;
-        }
-
-        if (decision.ShouldRestart)
-        {
-            await RestartServerAsync(decision.Reason);
+            logger.Error("Policy evaluation failed.", ex);
         }
     }
 
@@ -218,33 +232,66 @@ public partial class Form1 : Form
         metricsGraph.Invalidate();
     }
 
-    private void CheckScheduledUpdate()
+    /// <summary>
+    /// Scheduled action contract: the configured time starts a scheduled <em>restart</em> (it never
+    /// runs SteamCMD). The occurrence key is the action itself — local date plus the configured
+    /// time — so repeated timer ticks inside the same minute cannot start a second restart. The
+    /// notification is posted only as part of that same occurrence.
+    /// </summary>
+    private void CheckScheduledRestart()
     {
-        if (!automationService.IsUpdateDue(managerOptions, DateTime.Now))
+        if (_isClosing)
         {
             return;
         }
 
-        if (TimeSpan.TryParse(managerOptions.UpdateScheduleTime, out var schedule))
+        // Cheap self-healing for a retained installer that has since exited (for example when the
+        // Exited notification could not be marshalled to the UI thread).
+        RefreshInstallerState();
+
+        if (!managerOptions.UpdateScheduleEnabled)
         {
-            var bucket = DateTime.Now.Date.Add(schedule);
-            if (_scheduledUpdateWebhookBucketUtc != bucket)
-            {
-                _scheduledUpdateWebhookBucketUtc = bucket;
-                PostDiscordWebhook(
-                    DiscordWebhookEventKind.ScheduledUpdateWindow,
-                    "Update window",
-                    serverStarted
-                        ? "*Scheduled time hit* — a restart will run if your policies allow it."
-                        : "*Scheduled time hit* — the server was already idle.",
-                    DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
-            }
+            return;
         }
 
-        logger.Info("Scheduled update window reached.");
+        if (!ScheduledRestartPolicy.TryParseSchedule(managerOptions.UpdateScheduleTime, out _))
+        {
+            logger.Warn($"Scheduled restart ignored: '{managerOptions.UpdateScheduleTime}' is not a valid HH:mm time.");
+            return;
+        }
+
+        var now = DateTime.Now;
+        if (!_scheduledRestartPolicy.IsDue(managerOptions, now, out var occurrence))
+        {
+            return;
+        }
+
+        // Do not consume the occurrence while another operation owns the lifecycle: a later tick
+        // inside the grace window can still perform it.
+        if (LifecycleOperationInProgress || restartInProgress || _installerExitUnconfirmed)
+        {
+            logger.Warn("Scheduled restart deferred: another lifecycle operation is in progress.");
+            UpdateStatus("Scheduled restart deferred — operation in progress");
+            return;
+        }
+
+        _scheduledRestartPolicy.MarkConsumed(occurrence);
+        PostDiscordWebhook(
+            DiscordWebhookEventKind.ScheduledUpdateWindow,
+            "Scheduled restart window",
+            serverStarted
+                ? "*Scheduled time hit* — a restart will run if your policies allow it."
+                : "*Scheduled time hit* — the server was already idle, so no restart was needed.",
+            DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+
+        logger.Info("Scheduled restart window reached.");
         if (serverStarted)
         {
-            _ = RestartServerAsync("Scheduled update window");
+            _ = RestartServerAsync("Scheduled restart window");
+        }
+        else
+        {
+            logger.Info("Scheduled restart window: server already idle; no action started.");
         }
     }
 
@@ -374,6 +421,17 @@ public partial class Form1 : Form
 
     private async Task DownloadAndInstallManagerUpdateAsync(ManagerReleaseInfo release)
     {
+        if (LifecycleOperationInProgress || restartInProgress)
+        {
+            MessageBox.Show(
+                this,
+                "A server start, stop, or restart is still in progress. Try the manager update again when the server operation has finished.",
+                "Manager updates",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
         var updaterExe = Path.Combine(AppContext.BaseDirectory, "ManagerUpdater.exe");
         if (!File.Exists(updaterExe))
         {
@@ -416,6 +474,20 @@ public partial class Form1 : Form
             "--pid", currentProcId.ToString(),
             "--exe", ManagerMainExeName
         };
+
+        // The download yielded to the UI thread; a start/stop/restart may have begun meanwhile.
+        // Launching the updater now would fight the lifecycle (and the refused close would leave
+        // the updater waiting on a manager that never exits).
+        if (LifecycleOperationInProgress || restartInProgress || _isClosing)
+        {
+            MessageBox.Show(
+                this,
+                "A server operation started while the manager update was downloading. Nothing was installed; try the update again after the operation finishes.",
+                "Manager updates",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
 
         Process.Start(new ProcessStartInfo
         {
@@ -622,7 +694,7 @@ public partial class Form1 : Form
 
     private void UpdateServerAvailability()
     {
-        var exe = Path.Combine(serverLocationBox.Text.Trim(), "Icarus", "Binaries", "Win64", "IcarusServer-Win64-Shipping.exe");
+        var exe = GetExpectedServerExecutablePath();
         var valid = File.Exists(exe);
         if (!valid && _installPathPreviouslyValid)
         {
@@ -637,39 +709,328 @@ public partial class Form1 : Form
         if (!valid)
         {
             logger.Warn("Icarus installation not found at selected location.");
-            startServerButton.Enabled = false;
-            UpdateStatus("Waiting for install");
+            if (!serverStarted)
+            {
+                startServerButton.Enabled = false;
+                UpdateStatus("Waiting for install");
+            }
         }
         else
         {
             logger.Info("Icarus installation found.");
             startServerButton.Enabled = true;
-            UpdateStatus("Idle");
+            if (!serverStarted)
+            {
+                UpdateStatus("Idle");
+            }
         }
     }
 
-        private void installServerButton_Click(object sender, EventArgs e)
+    /// <summary>
+    /// The install location the manager treats as configured. The persisted setting is authoritative;
+    /// the read-only location box is only a fallback so a fresh session can still resolve the path.
+    /// </summary>
+    private string GetConfiguredInstallLocation()
     {
+        var configured = Properties.Settings.Default.serverLocation;
+        return string.IsNullOrWhiteSpace(configured) ? serverLocationBox.Text.Trim() : configured.Trim();
+    }
+
+    /// <summary>
+    /// Single source for the expected game server executable path. The installer's success check and
+    /// <see cref="StartProcess"/> must agree, so "SteamCMD succeeded" cannot disagree with what the
+    /// manager is willing to launch.
+    /// </summary>
+    private string GetExpectedServerExecutablePath(string? installLocation = null)
+    {
+        var root = string.IsNullOrWhiteSpace(installLocation) ? GetConfiguredInstallLocation() : installLocation.Trim();
+        return Path.Combine(root, "Icarus", "Binaries", "Win64", "IcarusServer-Win64-Shipping.exe");
+    }
+
+    /// <summary>
+    /// Releases a retained installer handle only once its exit is confirmed, so the manager never
+    /// disposes the only handle to a still-running SteamCMD process.
+    /// </summary>
+    private bool TryReleaseExitedInstaller(out string reason)
+    {
+        reason = string.Empty;
+        var installer = _installerProc;
+        if (installer is null)
+        {
+            _installerExitUnconfirmed = false;
+            return true;
+        }
+
+        if (!SafeProcessHasExited(installer))
+        {
+            _installerExitUnconfirmed = true;
+            reason = "The previous SteamCMD install/update is still running. Wait for it to exit before starting another one.";
+            return false;
+        }
+
+        ReleaseInstallerProcess(installer);
+        return true;
+    }
+
+    private void ReleaseInstallerProcess(Process installer)
+    {
+        if (!ReferenceEquals(_installerProc, installer))
+        {
+            // A newer installer owns the field; never dispose another operation's handle.
+            return;
+        }
+
+        _installerProc = null;
+        _installerExitUnconfirmed = false;
+        try
+        {
+            installer.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Installer dispose failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Clears a retained installer handle that has since exited, so a stale "still running" flag
+    /// can never permanently block start, install, or close.
+    /// </summary>
+    private void RefreshInstallerState()
+    {
+        var installer = _installerProc;
+        if (installer is null || !SafeProcessHasExited(installer))
+        {
+            return;
+        }
+
+        ReleaseInstallerProcess(installer);
+        installServerButton.Enabled = true;
+    }
+
+    /// <summary>
+    /// Called (marshalled to the UI thread) when a retained installer finally exits after a timeout.
+    /// Only the retry affordance is restored: readiness is never claimed from this path.
+    /// </summary>
+    private void OnInstallerExited(Process installer)
+    {
+        void apply()
+        {
+            if (!ReferenceEquals(_installerProc, installer) || _installInProgress)
+            {
+                return;
+            }
+
+            logger.Info("Retained SteamCMD installer exited; install/update can be retried.");
+            ReleaseInstallerProcess(installer);
+            installServerButton.Enabled = true;
+            UpdateStatus("Installer finished — check the log and retry if needed");
+        }
+
+        try
+        {
+            if (IsDisposed || Disposing)
+            {
+                return;
+            }
+
+            if (IsHandleCreated && InvokeRequired)
+            {
+                BeginInvoke(apply);
+            }
+            else
+            {
+                apply();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private async Task HandleTimedOutInstallerAsync(Process installer)
+    {
+        logger.Error("Install/update timed out after 30 minutes; attempting to terminate the installer.");
+        UpdateStatus("Install timed out — stopping installer");
+
+        try
+        {
+            if (!SafeProcessHasExited(installer))
+            {
+                installer.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Could not terminate the timed-out installer: {ex.Message}");
+        }
+
+        var exited = await Task.Run(() =>
+        {
+            try
+            {
+                return installer.WaitForExit(10000) || SafeProcessHasExited(installer);
+            }
+            catch
+            {
+                return SafeProcessHasExited(installer);
+            }
+        }).ConfigureAwait(true);
+
+        if (exited || SafeProcessHasExited(installer))
+        {
+            ReleaseInstallerProcess(installer);
+            FailInstall("SteamCMD did not finish within 30 minutes and was terminated. The server was not marked ready.");
+            return;
+        }
+
+        // Still running: retain the only handle, block a duplicate install and claim nothing.
+        _installerExitUnconfirmed = true;
+        logger.Error("SteamCMD is still running after the timeout; its handle is retained and a duplicate install is blocked.");
+        UpdateStatus("Install timed out — installer still running");
+        MessageBox.Show(
+            this,
+            "Install/update timed out, and the SteamCMD process is still running.\n\nThe manager keeps a handle to it and will not start another install until it exits. Check the SteamCMD log; the server is not marked ready to start.",
+            "Install/update",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
+    }
+
+    private async void installServerButton_Click(object sender, EventArgs e)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        RefreshInstallerState();
+
+        if (_installInProgress)
+        {
+            logger.Warn("Install ignored: an install/update is already running.");
+            UpdateStatus("Install already in progress");
+            return;
+        }
+
+        if (LifecycleOperationInProgress || restartInProgress)
+        {
+            logger.Warn("Install ignored: a server lifecycle operation is in progress.");
+            UpdateStatus("Install blocked — server operation in progress");
+            MessageBox.Show(
+                this,
+                "A start, stop, or restart is still in progress. Try the install/update again when the server operation has finished.",
+                "Install/update",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        if (!TryReleaseExitedInstaller(out var installerBlockReason))
+        {
+            logger.Warn(installerBlockReason);
+            UpdateStatus("Install blocked — previous installer still running");
+            MessageBox.Show(this, installerBlockReason, "Install/update", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var installDir = GetConfiguredInstallLocation();
+        if (string.IsNullOrWhiteSpace(installDir))
+        {
+            FailInstall("Set the server install folder before installing.");
+            return;
+        }
+
+        var expectedExe = GetExpectedServerExecutablePath(installDir);
+        _installInProgress = true;
+        installServerButton.Enabled = false;
         try
         {
             UpdateStatus("Installing...");
             var steamcmd = Path.Combine(Environment.CurrentDirectory, "steamcmd", "steamcmd.exe");
-            var args = $"/b /w /high +login anonymous +force_install_dir \"{Properties.Settings.Default.serverLocation}\" +app_update 2089300 validate +quit";
-            var procStartInfo = new ProcessStartInfo(steamcmd, args) { UseShellExecute = false };
-            using var installer = new Process { StartInfo = procStartInfo };
-            installer.Start();
-            installer.WaitForExit();
+            if (!File.Exists(steamcmd))
+            {
+                throw new FileNotFoundException("SteamCMD was not found next to the manager.", steamcmd);
+            }
+
+            var args = $"/b /w /high +login anonymous +force_install_dir \"{installDir}\" +app_update 2089300 validate +quit";
+            var procStartInfo = new ProcessStartInfo(steamcmd, args)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            var installer = new Process { StartInfo = procStartInfo, EnableRaisingEvents = true };
+            installer.OutputDataReceived += (_, log) =>
+            {
+                if (!string.IsNullOrWhiteSpace(log.Data))
+                {
+                    logger.Info($"SteamCMD: {log.Data}");
+                }
+            };
+            installer.ErrorDataReceived += (_, log) =>
+            {
+                if (!string.IsNullOrWhiteSpace(log.Data))
+                {
+                    logger.Warn($"SteamCMD: {log.Data}");
+                }
+            };
+            installer.Exited += (_, _) => OnInstallerExited(installer);
+
+            try
+            {
+                installer.Start();
+            }
+            catch
+            {
+                TryDisposeUnstartedProcess(installer);
+                throw;
+            }
+
+            // Own the handle only after a real installer exists; from here on it is retained until
+            // exit is confirmed, including on timeout.
+            _installerProc = installer;
+            installer.BeginOutputReadLine();
+            installer.BeginErrorReadLine();
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+            try
+            {
+                await installer.WaitForExitAsync(timeout.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                await HandleTimedOutInstallerAsync(installer).ConfigureAwait(true);
+                return;
+            }
+
             var exitCode = installer.ExitCode;
+            ReleaseInstallerProcess(installer);
+
+            if (exitCode != 0)
+            {
+                FailInstall($"SteamCMD exited with code {exitCode}.");
+                return;
+            }
+
+            if (!File.Exists(expectedExe))
+            {
+                FailInstall($"SteamCMD reported success, but the server executable is not present at {expectedExe}.");
+                return;
+            }
+
             PostDiscordWebhook(
                 DiscordWebhookEventKind.SteamCmdFinished,
-                exitCode == 0 ? "SteamCMD finished" : "SteamCMD reported failure",
-                exitCode == 0 ? "*Install or update step completed.*" : $"*Exit code* `{exitCode}`",
+                "SteamCMD finished",
+                "*Install or update step completed.*",
                 DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
-            installServerButton.Enabled = false;
-            startServerButton.Enabled = true;
-            UpdateStatus("Idle");
             Properties.Settings.Default.IsInit = false;
             Properties.Settings.Default.Save();
+            UpdateServerAvailability();
             logger.Info("Install/update completed.");
         }
         catch (Exception ex)
@@ -680,8 +1041,40 @@ public partial class Form1 : Form
                 "SteamCMD install/update failed",
                 DiscordWebhookEmbedFactory.TruncateDescription(ex.ToString(), managerOptions),
                 DiscordWebhookEmbedFactory.BuildDiagnosticExtras(managerOptions, currentServerSettings));
-            MessageBox.Show("Install/update failed. See logs for details.");
+            UpdateStatus("Install failed — see log");
+            MessageBox.Show(this, "Install/update failed. See logs for details.", "Install/update", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        finally
+        {
+            _installInProgress = false;
+
+            // A retained installer keeps the control disabled, so the user cannot launch a second
+            // SteamCMD while the first may still be running.
+            installServerButton.Enabled = _installerProc is null || SafeProcessHasExited(_installerProc);
         }
+    }
+
+    /// <summary>
+    /// A failed install must not look ready. Start stays disabled until a later check proves the
+    /// executable exists; the operation is retryable because the button is re-enabled.
+    /// </summary>
+    private void FailInstall(string reason)
+    {
+        logger.Error($"Install/update failed: {reason}");
+        PostDiscordWebhook(
+            DiscordWebhookEventKind.SteamCmdFinished,
+            "SteamCMD install/update failed",
+            DiscordWebhookEmbedFactory.TruncateDescription(reason, managerOptions),
+            DiscordWebhookEmbedFactory.BuildDiagnosticExtras(managerOptions, currentServerSettings));
+        if (!serverStarted && !File.Exists(GetExpectedServerExecutablePath()))
+        {
+            // A failure may have removed or not produced the executable; never leave Start enabled.
+            // While the server runs the same control is "Stop Server" and must stay usable.
+            startServerButton.Enabled = false;
+        }
+
+        UpdateStatus("Install failed — see log");
+        MessageBox.Show(this, $"Install/update failed.\n\n{reason}\n\nThe server is not marked ready to start.", "Install/update", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    }
 
 }

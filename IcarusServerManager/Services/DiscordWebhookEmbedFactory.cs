@@ -29,7 +29,14 @@ internal static class DiscordWebhookEmbedFactory
         }
 
         s = s.Replace("\r\n", "\n", StringComparison.Ordinal);
-        return s.Length <= cap ? s : s[..cap] + "…";
+        if (s.Length <= cap)
+        {
+            return s;
+        }
+
+        // The cap is a platform limit, so the ellipsis counts against it: a 900-character limit
+        // yields at most 900 characters, never 901.
+        return cap <= 1 ? "…" : string.Concat(s.AsSpan(0, cap - 1), "…");
     }
 
     /// <summary>Minimal card for stops, exits, and manager shutdown — no long field grids.</summary>

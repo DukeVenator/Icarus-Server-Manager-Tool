@@ -232,7 +232,7 @@ public partial class Form1 : Form
     private void SaveConsoleLoggingSettings()
     {
         SyncConsoleLoggingFromUiToModel();
-        optionsService.Save(managerOptions);
+        PersistManagerOptions(userInitiated: false);
         logger.Info("Console logging settings saved.");
     }
 
@@ -240,7 +240,7 @@ public partial class Form1 : Form
     {
         managerOptions.AutoScrollConsole = !managerOptions.AutoScrollConsole;
         SetControl("AutoScrollConsole", managerOptions.AutoScrollConsole);
-        optionsService.Save(managerOptions);
+        PersistManagerOptions(userInitiated: false);
         UpdateConsoleAutoScrollButtonAppearance();
         logger.Info(
             managerOptions.AutoScrollConsole
@@ -562,7 +562,7 @@ public partial class Form1 : Form
         AddCheckField(panel, "Notify: server stopped (managed stop only)", "DiscordWebhookNotifyServerStop", false);
         AddCheckField(panel, "Notify: unexpected exit / crash (process died)", "DiscordWebhookNotifyUnexpectedExit", false);
         AddCheckField(panel, "Notify: restart warning (policy countdown)", "DiscordWebhookNotifyRestartWarning", false);
-        AddCheckField(panel, "Notify: scheduled update window reached", "DiscordWebhookNotifyScheduledUpdate", false);
+        AddCheckField(panel, "Notify: scheduled restart window reached", "DiscordWebhookNotifyScheduledUpdate", false);
         AddCheckField(panel, "Notify: SteamCMD install/update finished", "DiscordWebhookNotifySteamCmd", false);
         AddCheckField(panel, "Notify: INI save failed (exception)", "DiscordWebhookNotifyIniSaveFailed", false);
         AddCheckField(panel, "Notify: INI validation failed (blocked save)", "DiscordWebhookNotifyIniValidationFailed", false);
@@ -598,8 +598,8 @@ public partial class Form1 : Form
         AddTextField(panel, "Discord override username (optional)", "DiscordWebhookUsername");
         AddTextField(panel, "Discord override avatar URL (optional)", "DiscordWebhookAvatarUrl");
         AddCheckField(panel, "Auto Scroll Console", "AutoScrollConsole", true);
-        AddCheckField(panel, "Scheduled Update Enabled", "UpdateScheduleEnabled", false);
-        AddTextField(panel, "Update Time HH:mm", "UpdateScheduleTime");
+        AddCheckField(panel, "Scheduled Restart Enabled", "UpdateScheduleEnabled", false);
+        AddTextField(panel, "Restart Time HH:mm", "UpdateScheduleTime");
         AddCheckField(panel, "Manager auto-update checks", "ManagerUpdateCheckEnabled", true);
         AddNumericField(panel, "Manager update check interval (hours)", "ManagerUpdateCheckIntervalHours", 1, 168, 6);
         AddCheckField(panel, "Manager updates: include prerelease tags", "ManagerUpdateIncludePrerelease", false);
@@ -635,6 +635,20 @@ public partial class Form1 : Form
             toolTips.SetToolTip(
                 waitNum,
                 "Maximum time to wait for the server process to exit after stop before forcing termination.");
+        }
+
+        if (managerControls.TryGetValue("UpdateScheduleEnabled", out var scheduleToggle))
+        {
+            toolTips.SetToolTip(
+                scheduleToggle,
+                "Restart the server once a day at the configured time. This scheduled action only restarts the server; it never runs SteamCMD or installs an update.");
+        }
+
+        if (managerControls.TryGetValue("UpdateScheduleTime", out var scheduleTimeField))
+        {
+            toolTips.SetToolTip(
+                scheduleTimeField,
+                "Local time (HH:mm) for the scheduled restart. One restart is started per occurrence; installs/updates remain manual.");
         }
     }
 

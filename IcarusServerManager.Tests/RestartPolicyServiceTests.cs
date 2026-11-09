@@ -161,6 +161,131 @@ public sealed class RestartPolicyServiceTests
     }
 
     [Fact]
+    public void Evaluate_CrashStates_TransitionFromStartAllowedToRetryPendingToExhausted()
+    {
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            CrashRestartEnabled = true,
+            CrashRestartMaxAttempts = 2,
+            IntervalRestartEnabled = false
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        var first = service.Evaluate(options, true, start, start.AddHours(1), true, 0, false);
+        Assert.Equal(CrashRestartState.StartAllowed, first.CrashState);
+        Assert.True(first.ShouldRestart);
+
+        var second = service.Evaluate(options, true, start, start.AddHours(1).AddMinutes(1), true, 0, false);
+        Assert.Equal(CrashRestartState.RetryPending, second.CrashState);
+        Assert.True(second.ShouldRestart, "a pending retry still asks the caller for a replacement launch");
+
+        var third = service.Evaluate(options, true, start, start.AddHours(1).AddMinutes(2), true, 0, false);
+        Assert.Equal(CrashRestartState.Exhausted, third.CrashState);
+        Assert.False(third.ShouldRestart);
+        Assert.Equal(3, service.CrashAttempts);
+    }
+
+    [Fact]
+    public void Evaluate_CrashedEvaluationWithLongUptime_DoesNotResetCrashHistory()
+    {
+        // Regression: a crash after more than the stability interval used to clear the attempt
+        // history, so a crash loop never exhausted its budget.
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            CrashRestartEnabled = true,
+            CrashRestartMaxAttempts = 2,
+            IntervalRestartEnabled = false
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        _ = service.Evaluate(options, true, start, start.AddHours(5), true, 0, false);
+        _ = service.Evaluate(options, true, start, start.AddHours(5).AddMinutes(1), true, 0, false);
+        Assert.Equal(2, service.CrashAttempts);
+
+        var afterVeryLongUptime = service.Evaluate(options, true, start, start.AddHours(50), true, 0, false);
+        Assert.Equal(3, service.CrashAttempts);
+        Assert.Equal(CrashRestartState.Exhausted, afterVeryLongUptime.CrashState);
+        Assert.False(afterVeryLongUptime.ShouldRestart);
+    }
+
+    [Fact]
+    public void Evaluate_StableNonCrashedRun_ResetsCrashHistory()
+    {
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            CrashRestartEnabled = true,
+            CrashRestartMaxAttempts = 2,
+            IntervalRestartEnabled = false
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        _ = service.Evaluate(options, true, start, start.AddMinutes(1), true, 0, false);
+        _ = service.Evaluate(options, true, start, start.AddMinutes(2), true, 0, false);
+        Assert.Equal(2, service.CrashAttempts);
+
+        // Just under the stability interval must not reset.
+        _ = service.Evaluate(
+            options,
+            true,
+            start,
+            start.Add(RestartPolicyService.StableRunInterval).AddSeconds(-30),
+            false,
+            0,
+            false);
+        Assert.Equal(2, service.CrashAttempts);
+
+        // A full stable, non-crashed run does.
+        _ = service.Evaluate(
+            options,
+            true,
+            start,
+            start.Add(RestartPolicyService.StableRunInterval),
+            false,
+            0,
+            false);
+        Assert.Equal(0, service.CrashAttempts);
+
+        var nextCrash = service.Evaluate(
+            options,
+            true,
+            start,
+            start.Add(RestartPolicyService.StableRunInterval).AddMinutes(1),
+            true,
+            0,
+            false);
+        Assert.Equal(CrashRestartState.StartAllowed, nextCrash.CrashState);
+        Assert.Equal(1, service.CrashAttempts);
+    }
+
+    [Fact]
+    public void Evaluate_NonCrashedEvaluation_EndsTheCrashEpisodeButKeepsHistory()
+    {
+        var service = new RestartPolicyService();
+        var options = new ManagerOptions
+        {
+            CrashRestartEnabled = true,
+            CrashRestartMaxAttempts = 5,
+            IntervalRestartEnabled = false
+        };
+        var start = new DateTime(2026, 1, 1, 10, 0, 0, DateTimeKind.Utc);
+
+        var firstCrash = service.Evaluate(options, true, start, start, true, 0, false);
+        Assert.Equal(CrashRestartState.StartAllowed, firstCrash.CrashState);
+
+        // Server is running again but has not yet proven stability: no reset, but a new crash is a
+        // new episode and must not be reported as a pending retry for the previous one.
+        _ = service.Evaluate(options, true, start, start.AddMinutes(1), false, 0, false);
+        Assert.Equal(1, service.CrashAttempts);
+
+        var secondCrash = service.Evaluate(options, true, start, start.AddMinutes(2), true, 0, false);
+        Assert.Equal(CrashRestartState.StartAllowed, secondCrash.CrashState);
+        Assert.Equal(2, service.CrashAttempts);
+    }
+
+    [Fact]
     public void GetCrashDelaySeconds_ClampsToMinimumOne()
     {
         var service = new RestartPolicyService();

@@ -97,7 +97,7 @@ public sealed class AutomationServiceWebhookPayloadTests
             null);
         var json = JsonConvert.SerializeObject(payload);
         var desc = JObject.Parse(json)["embeds"]![0]!["description"]!.ToString();
-        Assert.True(desc.Length <= 901, $"Expected <= 901 with ellipsis, got {desc.Length}");
+        Assert.True(desc.Length <= 900, $"Expected <= 900 including the ellipsis, got {desc.Length}");
         Assert.EndsWith("…", desc, StringComparison.Ordinal);
     }
 

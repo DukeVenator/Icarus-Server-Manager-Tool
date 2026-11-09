@@ -6,12 +6,18 @@ using Xunit;
 
 namespace IcarusServerManager.Tests;
 
+/// <summary>
+/// These tests load real application settings, profiles and timers. They are quarantined until
+/// those dependencies can be redirected before form construction. Saving and restoring a few
+/// preference values is not isolation and cannot protect against timeouts or process termination.
+/// </summary>
+[Collection("ManagerSettingsSideEffects")]
 public sealed class Form1SmokeTests
 {
     /// <summary>
     /// WinForms requires STA; xUnit defaults are not STA. Catches ctor / InitializeComponent regressions before Form1 splits.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires isolated settings, profile storage, timers and process execution; do not run against the developer environment.")]
     public void Form1_can_be_constructed_and_disposed_on_sta_thread()
     {
         Exception? caught = null;
@@ -37,7 +43,7 @@ public sealed class Form1SmokeTests
     /// <summary>
     /// Exercises moved partials (UI build, persistence, timers, theme) via the real <see cref="Form.Load"/> path.
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Requires isolated settings, profile storage, timers and process execution; do not run against the developer environment.")]
     public void Form1_Load_completes_on_sta_thread()
     {
         Exception? caught = null;
@@ -72,4 +78,5 @@ public sealed class Form1SmokeTests
         Assert.True(thread.Join(120_000), "STA thread did not complete within timeout.");
         Assert.Null(caught);
     }
+
 }

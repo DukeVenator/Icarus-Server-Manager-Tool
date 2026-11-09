@@ -10,82 +10,264 @@ namespace IcarusServerManager;
 
 public partial class Form1 : Form
 {
-    private void StartProcess()
+    private void StartProcess(bool isRestartOperation = false)
     {
         if (serverStarted)
         {
             return;
         }
 
-        SaveManagerOptionsFromUi(false);
-        SaveUiToIni(false);
-        logger.Info("Starting game server...");
-        var exe = Path.Combine(serverLocationBox.Text, "Icarus", "Binaries", "Win64", "IcarusServer-Win64-Shipping.exe");
-        if (!File.Exists(exe))
+        RefreshInstallerState();
+
+        if (_startInProgress)
         {
-            logger.Error($"Executable not found: {exe}");
-            MessageBox.Show("Game server executable was not found.");
+            logger.Warn("Start ignored: a start is already in progress.");
+            UpdateStatus("Start ignored — already starting");
             return;
         }
 
-        var gamePort = GetInt("LaunchGamePort", managerOptions.LaunchGamePort);
-        var queryPort = GetInt("LaunchQueryPort", managerOptions.LaunchQueryPort);
-        var logPath = GetString("LaunchLogPath", managerOptions.LaunchLogPath);
-        var args = iniService.BuildLaunchArguments(currentServerSettings, gamePort, queryPort, logPath);
-        logger.Info($"Launch arguments: {args}");
-        var procStartInfo = new ProcessStartInfo(exe, args)
+        if (_isClosing)
         {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            CreateNoWindow = true
-        };
+            logger.Warn("Start ignored: the manager is closing.");
+            return;
+        }
 
-        serverProc = new Process { StartInfo = procStartInfo, EnableRaisingEvents = true };
-        serverProc.OutputDataReceived += HandleExeOutput;
-        serverProc.ErrorDataReceived += HandleExeOutput;
-        serverProc.Exited += (_, _) => OnServerExited();
+        if (_installInProgress || _installerExitUnconfirmed)
+        {
+            logger.Warn("Start ignored: an install/update is in progress.");
+            UpdateStatus("Start blocked — install in progress");
+            return;
+        }
 
-        serverProc.Start();
-        serverProc.BeginOutputReadLine();
-        serverProc.BeginErrorReadLine();
-        playerTracker.Clear();
-        startTime = DateTime.Now;
-        serverStarted = true;
-        _serverReadyAnnounced = 0;
-        restartInProgress = false;
-        crashDetected = false;
-        restartPolicyService.ResetCrashAttempts();
-        UpdateStatus("Starting...");
-        startServerButton.BackColor = Color.Green;
-        ChangeStartButton("Stop Server");
-        forceKillServerButton.Enabled = true;
+        if (!isRestartOperation && _restartGuardDepth > 0)
+        {
+            logger.Warn("Start ignored: another stop or restart owns the lifecycle.");
+            UpdateStatus("Start ignored — stop/restart in progress");
+            return;
+        }
+
+        // A restart's own launch is nested inside the outer restart operation and is allowed. Any
+        // other overlap (double start, start during stop/force-kill) is refused instead of raced.
+        if (_lifecycleDepth > 0 && !(isRestartOperation && _restartGuardDepth > 0))
+        {
+            logger.Warn("Start ignored: another lifecycle operation is in progress.");
+            UpdateStatus("Start blocked — another lifecycle operation is in progress");
+            return;
+        }
+
+        using var lifecycle = EnterLifecycle();
+        _startInProgress = true;
+        try
+        {
+            if (!ReleaseExitedProcessOrBlockStart(out var blockReason))
+            {
+                logger.Error(blockReason);
+                UpdateStatus("Start blocked — previous process exit unconfirmed");
+                MessageBox.Show(this, blockReason, "Server not ready to start", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            SaveManagerOptionsFromUi(false);
+            SaveUiToIni(false);
+            logger.Info("Starting game server...");
+            var exe = GetExpectedServerExecutablePath();
+            if (!File.Exists(exe))
+            {
+                logger.Error($"Executable not found: {exe}");
+                UpdateStatus("Start failed — game server executable not found");
+                MessageBox.Show("Game server executable was not found.");
+                return;
+            }
+
+            var gamePort = GetInt("LaunchGamePort", managerOptions.LaunchGamePort);
+            var queryPort = GetInt("LaunchQueryPort", managerOptions.LaunchQueryPort);
+            var logPath = GetString("LaunchLogPath", managerOptions.LaunchLogPath);
+            var args = iniService.BuildLaunchArguments(currentServerSettings, gamePort, queryPort, logPath);
+            logger.Info($"Launch arguments: {args}");
+            var procStartInfo = new ProcessStartInfo(exe, args)
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+                CreateNoWindow = true
+            };
+
+            var proc = new Process { StartInfo = procStartInfo, EnableRaisingEvents = true };
+            proc.OutputDataReceived += HandleExeOutput;
+            proc.ErrorDataReceived += HandleExeOutput;
+            proc.Exited += (_, _) => OnServerExited();
+
+            try
+            {
+                proc.Start();
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Game server process failed to start.", ex);
+                TryDisposeUnstartedProcess(proc);
+                UpdateStatus("Start failed — see log");
+                return;
+            }
+
+            // Own the handle only after a real process exists; a handle that never started must not
+            // block a later start (its exit state is unreadable, not confirmed).
+            serverProc = proc;
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+            playerTracker.Clear();
+            startTime = DateTime.Now;
+            serverStarted = true;
+            _serverReadyAnnounced = 0;
+            crashDetected = false;
+            _serverExitUnconfirmed = false;
+            _lastStartUtc = DateTime.UtcNow;
+            UpdateStatus("Starting...");
+            startServerButton.BackColor = Color.Green;
+            ChangeStartButton("Stop Server");
+            forceKillServerButton.Enabled = true;
+            ApplyTheme();
+            logger.Info("Game server started.");
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Starting the game server failed.", ex);
+            if (!serverStarted)
+            {
+                UpdateStatus("Start failed — see log");
+                ChangeStartButton("Start Server");
+            }
+        }
+        finally
+        {
+            _startInProgress = false;
+        }
+    }
+
+    /// <summary>Disposes a handle whose Start() threw; no process exists, so exit need not be confirmed.</summary>
+    private void TryDisposeUnstartedProcess(Process proc)
+    {
+        try
+        {
+            proc.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Dispose of an unstarted process handle failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// A new process may only be launched once the previous one is known to have exited. When exit
+    /// is unconfirmed the handle is retained so the manager cannot forget a server it still owns.
+    /// </summary>
+    private bool ReleaseExitedProcessOrBlockStart(out string reason)
+    {
+        reason = string.Empty;
+        var proc = serverProc;
+        if (proc is null)
+        {
+            _serverExitUnconfirmed = false;
+            return true;
+        }
+
+        if (SafeProcessHasExited(proc))
+        {
+            ReleaseServerProcess(proc);
+            return true;
+        }
+
+        _serverExitUnconfirmed = true;
+        reason = "The previous server process is still running (or its exit could not be confirmed). " +
+                 "Stop it or use Force kill before starting a replacement.";
+        return false;
+    }
+
+    /// <summary>
+    /// Drops and disposes the tracked process handle only after the caller has confirmed exit.
+    /// Never call this for an unconfirmed process: the manager would forget a server it still owns.
+    /// </summary>
+    private void ReleaseServerProcess(Process proc)
+    {
+        lock (_serverProcDisposeLock)
+        {
+            if (!ReferenceEquals(serverProc, proc))
+            {
+                return;
+            }
+
+            serverProc = null;
+        }
+
+        try
+        {
+            proc.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.Warn($"Process dispose failed: {ex.Message}");
+        }
+
+        _serverExitUnconfirmed = false;
+    }
+
+    /// <summary>Single place that renders the "no server process" state so every exit path matches.</summary>
+    private void ApplyIdleLifecycleUi()
+    {
+        UpdateStatus("Idle");
+        startServerButton.BackColor = Color.Maroon;
+        ChangeStartButton("Start Server");
+        forceKillServerButton.Enabled = false;
         ApplyTheme();
-        logger.Info("Game server started.");
+    }
+
+    private IDisposable EnterLifecycle()
+    {
+        _lifecycleDepth++;
+        return new LifecycleScope(this);
+    }
+
+    private sealed class LifecycleScope : IDisposable
+    {
+        private readonly Form1 _form;
+        private bool _disposed;
+
+        public LifecycleScope(Form1 form)
+        {
+            _form = form;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _form._lifecycleDepth = Math.Max(0, _form._lifecycleDepth - 1);
+        }
     }
 
     private void OnServerExited()
     {
         var wasRunning = serverStarted;
         serverStarted = false;
+        _serverExitUnconfirmed = false;
         _serverReadyAnnounced = 0;
         playerTracker.Clear();
 
         void applyExitUi()
         {
-            if (IsDisposed || Disposing)
+            if (IsDisposed || Disposing || serverStarted)
             {
+                // A replacement already owns the UI; do not overwrite its state with Idle.
                 return;
             }
 
             try
             {
-                UpdateStatus("Idle");
-                ChangeStartButton("Start Server");
-                startServerButton.BackColor = Color.Maroon;
-                forceKillServerButton.Enabled = false;
-                ApplyTheme();
+                ApplyIdleLifecycleUi();
             }
             catch (ObjectDisposedException)
             {
@@ -119,7 +301,7 @@ public partial class Form1 : Form
             return;
         }
 
-        if (wasRunning && !restartInProgress)
+        if (wasRunning && !restartInProgress && !_isClosing)
         {
             crashDetected = true;
             crashCount++;
@@ -139,11 +321,29 @@ public partial class Form1 : Form
             return;
         }
 
+        if (!isRestartOperation && _restartGuardDepth > 0)
+        {
+            logger.Warn("Stop ignored: another stop or restart is already in progress.");
+            UpdateStatus("Stop ignored — another server operation is in progress");
+            return;
+        }
+
+        if (_installInProgress && !isRestartOperation)
+        {
+            logger.Warn("Stop ignored: an install/update is in progress.");
+            UpdateStatus("Stop ignored — install in progress");
+            return;
+        }
+
+        using var lifecycle = EnterLifecycle();
+
+        // Take a lease rather than assigning the flag. A stop nested inside a restart releases only
+        // its own lease, so the outer restart guard stays set until the restart operation finishes.
+        AcquireRestartGuard();
         var proc = serverProc;
         try
         {
             logger.Info("Stopping server...");
-            restartInProgress = true;
             var waitSeconds = Math.Clamp(managerOptions.GracefulShutdownWaitSeconds, 10, 900);
             var exitedGracefully = await RequestGracefulShutdownAsync(
                     proc,
@@ -164,30 +364,28 @@ public partial class Form1 : Form
                 }
             }
 
-            lock (_serverProcDisposeLock)
+            if (!SafeProcessHasExited(proc))
             {
-                if (ReferenceEquals(serverProc, proc))
-                {
-                    serverProc = null;
-                    try
-                    {
-                        proc.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.Warn($"Process dispose failed: {ex.Message}");
-                    }
-                }
+                // Ownership is retained: never report Idle while the process may still be alive.
+                _serverExitUnconfirmed = true;
+                logger.Error("Server process did not exit; keeping process ownership and reporting a failed stop.");
+                UpdateStatus("Stop failed — process still running");
+                SetStartButtonForRunningProcess();
+                MessageBox.Show(
+                    this,
+                    "The server process did not exit. The manager still owns the process; use Force kill or wait for it to exit before starting a replacement.",
+                    "Stop did not complete",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
             }
 
+            ReleaseServerProcess(proc);
             serverStarted = false;
             _serverReadyAnnounced = 0;
             playerTracker.Clear();
-            UpdateStatus("Idle");
-            startServerButton.BackColor = Color.Maroon;
-            ChangeStartButton("Start Server");
-            forceKillServerButton.Enabled = false;
-            ApplyTheme();
+            _lastStopUtc = DateTime.UtcNow;
+            ApplyIdleLifecycleUi();
             logger.Info("Game server stopped.");
             if (!isRestartOperation)
             {
@@ -201,23 +399,52 @@ public partial class Form1 : Form
         catch (Exception ex)
         {
             logger.Error("Failed to stop server.", ex);
+            if (proc is not null && SafeProcessHasExited(proc))
+            {
+                ReleaseServerProcess(proc);
+                serverStarted = false;
+                _serverReadyAnnounced = 0;
+                playerTracker.Clear();
+                _lastStopUtc = DateTime.UtcNow;
+                ApplyIdleLifecycleUi();
+            }
+            else
+            {
+                _serverExitUnconfirmed = true;
+                UpdateStatus("Stop failed — see log");
+                SetStartButtonForRunningProcess();
+            }
         }
         finally
         {
-            restartInProgress = false;
+            ReleaseRestartGuard();
         }
     }
 
-    private static bool SafeProcessHasExited(Process process)
+    private void SetStartButtonForRunningProcess()
+    {
+        serverStarted = true;
+        startServerButton.BackColor = Color.Green;
+        ChangeStartButton("Stop Server");
+        forceKillServerButton.Enabled = true;
+        ApplyTheme();
+    }
+
+    /// <summary>
+    /// Reads exit state without ever converting a read failure into a false "exited". A handle the
+    /// manager cannot read (disposed, access denied, never started) is treated as still owned, so a
+    /// replacement launch is refused instead of orphaning a live server.
+    /// </summary>
+    private bool SafeProcessHasExited(Process process)
     {
         try
         {
             return process.HasExited;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
-            // Includes ObjectDisposedException on some runtimes where it derives from InvalidOperationException.
-            return true;
+            logger.Warn($"Process exit state could not be read ({ex.GetType().Name}); treating the process as still running.");
+            return false;
         }
     }
 
@@ -317,8 +544,35 @@ public partial class Form1 : Form
     private async Task ForceKillServerAsync()
     {
         var proc = serverProc;
-        if (proc == null || SafeProcessHasExited(proc))
+        if (proc == null)
         {
+            UpdateStatus("Force kill ignored — no server process is tracked");
+            return;
+        }
+
+        if (_installInProgress)
+        {
+            logger.Warn("Force kill ignored: an install/update is in progress.");
+            UpdateStatus("Force kill blocked — install in progress");
+            return;
+        }
+
+        if (_lifecycleDepth > 0)
+        {
+            logger.Warn("Force kill ignored: another lifecycle operation is in progress.");
+            UpdateStatus("Force kill blocked — another server operation is in progress");
+            return;
+        }
+
+        if (SafeProcessHasExited(proc))
+        {
+            // The exit event may have raced the click; release the now-confirmed handle.
+            ReleaseServerProcess(proc);
+            serverStarted = false;
+            _serverReadyAnnounced = 0;
+            playerTracker.Clear();
+            _lastStopUtc = DateTime.UtcNow;
+            ApplyIdleLifecycleUi();
             return;
         }
 
@@ -333,73 +587,119 @@ public partial class Form1 : Form
             return;
         }
 
-        restartInProgress = true;
+        // The modal dialog pumps messages: the process may have exited or another operation may
+        // have started while it was open, so re-validate before taking the lifecycle lease.
+        proc = serverProc;
+        if (proc is null || _lifecycleDepth > 0 || restartInProgress)
+        {
+            logger.Warn("Force kill ignored: the server state changed while the confirmation dialog was open.");
+            UpdateStatus("Force kill ignored — server state changed");
+            return;
+        }
+
+        if (SafeProcessHasExited(proc))
+        {
+            ReleaseServerProcess(proc);
+            serverStarted = false;
+            _serverReadyAnnounced = 0;
+            playerTracker.Clear();
+            _lastStopUtc = DateTime.UtcNow;
+            ApplyIdleLifecycleUi();
+            return;
+        }
+
+        using var lifecycle = EnterLifecycle();
+        AcquireRestartGuard();
         try
         {
             logger.Warn("Force killing server process (user requested).");
-            if (!SafeProcessHasExited(proc))
+            try
+            {
+                proc.Kill(entireProcessTree: true);
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Force kill could not terminate the process.", ex);
+                _serverExitUnconfirmed = !SafeProcessHasExited(proc);
+                UpdateStatus("Force kill failed — see log");
+                SetStartButtonForRunningProcess();
+                return;
+            }
+
+            await Task.Run(() =>
             {
                 try
                 {
-                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(8000);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    logger.Error("Force kill could not terminate the process.", ex);
-                    return;
+                    // best-effort
                 }
+            }).ConfigureAwait(true);
 
-                await Task.Run(() =>
-                {
-                    try
-                    {
-                        proc.WaitForExit(8000);
-                    }
-                    catch
-                    {
-                        // best-effort
-                    }
-                }).ConfigureAwait(true);
-            }
-
-            lock (_serverProcDisposeLock)
+            if (!SafeProcessHasExited(proc))
             {
-                if (ReferenceEquals(serverProc, proc))
-                {
-                    serverProc = null;
-                    try
-                    {
-                        proc.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.Warn($"Process dispose after force kill failed: {ex.Message}");
-                    }
-                }
+                _serverExitUnconfirmed = true;
+                logger.Error("Force kill did not terminate the process; ownership retained.");
+                UpdateStatus("Force kill failed — process still running");
+                SetStartButtonForRunningProcess();
+                MessageBox.Show(
+                    this,
+                    "The server process is still running after Force kill. The manager keeps ownership of it; check the process manually.",
+                    "Force kill did not complete",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
             }
 
+            ReleaseServerProcess(proc);
             serverStarted = false;
+            _serverReadyAnnounced = 0;
             playerTracker.Clear();
-            UpdateStatus("Idle");
-            startServerButton.BackColor = Color.Maroon;
-            ChangeStartButton("Start Server");
-            forceKillServerButton.Enabled = false;
-            ApplyTheme();
+            _lastStopUtc = DateTime.UtcNow;
+            ApplyIdleLifecycleUi();
             PostDiscordWebhook(
                 DiscordWebhookEventKind.ServerStop,
                 "Hard stop",
                 "*The server process was killed immediately* — saves may not have flushed.",
                 DiscordWebhookEmbedFactory.BuildLifecycleExtras(managerOptions, currentServerSettings, DateTime.Now));
         }
+        catch (Exception ex)
+        {
+            logger.Error("Force kill failed unexpectedly.", ex);
+            if (proc is not null && SafeProcessHasExited(proc))
+            {
+                ReleaseServerProcess(proc);
+                serverStarted = false;
+                _serverReadyAnnounced = 0;
+                playerTracker.Clear();
+                _lastStopUtc = DateTime.UtcNow;
+                ApplyIdleLifecycleUi();
+            }
+            else
+            {
+                _serverExitUnconfirmed = true;
+                UpdateStatus("Force kill failed — see log");
+                SetStartButtonForRunningProcess();
+            }
+        }
         finally
         {
-            restartInProgress = false;
+            ReleaseRestartGuard();
         }
     }
 
     private async void forceKillServerButton_Click(object sender, EventArgs e)
     {
-        await ForceKillServerAsync().ConfigureAwait(true);
+        try
+        {
+            await ForceKillServerAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Force kill failed unexpectedly.", ex);
+        }
     }
 
     private void PostDiscordWebhook(
@@ -431,51 +731,179 @@ public partial class Form1 : Form
 
     private async Task RestartServerAsync(string reason)
     {
-        if (restartInProgress)
+        if (_isClosing)
         {
+            logger.Warn($"Restart ignored ({reason}): the manager is closing.");
             return;
         }
 
-        restartInProgress = true;
-        lastRestartReason = reason;
-        restartHistory.Add($"{DateTime.Now:HH:mm:ss} - {reason}");
-        logger.Warn($"Restart requested: {reason}");
-        await automationService.SendWebhookEventAsync(
-            managerOptions,
-            DiscordWebhookEventKind.ServerRestart,
-            "Restart cycle",
-            DiscordWebhookEmbedFactory.TruncateDescription(reason, managerOptions),
-            DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings)).ConfigureAwait(true);
-        await StopProcessAsync(isRestartOperation: true).ConfigureAwait(true);
-        await Task.Delay(1500).ConfigureAwait(true);
-        StartProcess();
-        lastRestartAt = DateTime.Now;
-        if (!serverStarted)
+        if (restartInProgress)
         {
-            PostDiscordWebhook(
-                DiscordWebhookEventKind.ServerRestartFailed,
-                "Restart did not come back online",
+            logger.Warn($"Restart ignored ({reason}): a restart cycle is already in progress.");
+            return;
+        }
+
+        RefreshInstallerState();
+
+        if (_installInProgress || _installerExitUnconfirmed)
+        {
+            logger.Warn($"Restart ignored ({reason}): an install/update is in progress.");
+            UpdateStatus("Restart ignored — install in progress");
+            return;
+        }
+
+        if (_lifecycleDepth > 0)
+        {
+            logger.Warn($"Restart ignored ({reason}): another lifecycle operation is in progress.");
+            UpdateStatus("Restart ignored — another server operation is in progress");
+            return;
+        }
+
+        using var lifecycle = EnterLifecycle();
+
+        // The restart operation owns the guard for the whole cycle (stop + delay + launch). The
+        // nested stop takes its own lease and releases it without clearing this outer guard.
+        AcquireRestartGuard();
+        try
+        {
+            lastRestartReason = reason;
+            restartHistory.Add($"{DateTime.Now:HH:mm:ss} - {reason}");
+            logger.Warn($"Restart requested: {reason}");
+            await automationService.SendWebhookEventAsync(
+                managerOptions,
+                DiscordWebhookEventKind.ServerRestart,
+                "Restart cycle",
                 DiscordWebhookEmbedFactory.TruncateDescription(reason, managerOptions),
-                DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+                DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings)).ConfigureAwait(true);
+            await StopProcessAsync(isRestartOperation: true).ConfigureAwait(true);
+
+            // The stop may have been a no-op because the process already exited on its own. Release
+            // a confirmed-exit handle here and refuse the replacement only when exit is unconfirmed.
+            if (!ReleaseExitedProcessOrBlockStart(out var blockReason))
+            {
+                logger.Error($"Restart ({reason}) cannot launch a replacement: {blockReason}");
+                UpdateStatus("Restart failed — previous process still running");
+                PostDiscordWebhook(
+                    DiscordWebhookEventKind.ServerRestartFailed,
+                    "Restart did not come back online",
+                    "The previous server process did not exit, so a replacement was not launched.",
+                    DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+                return;
+            }
+
+            await Task.Delay(1500).ConfigureAwait(true);
+            StartProcess(isRestartOperation: true);
+            lastRestartAt = DateTime.Now;
+            if (!serverStarted)
+            {
+                PostDiscordWebhook(
+                    DiscordWebhookEventKind.ServerRestartFailed,
+                    "Restart did not come back online",
+                    DiscordWebhookEmbedFactory.TruncateDescription(reason, managerOptions),
+                    DiscordWebhookEmbedFactory.BuildOperationalExtras(managerOptions, currentServerSettings));
+            }
+        }
+        finally
+        {
+            ReleaseRestartGuard();
         }
     }
-        private async void startServerButton_Click(object sender, EventArgs e)
+
+    private async void startServerButton_Click(object sender, EventArgs e)
+    {
+        try
         {
+            if (_isClosing)
+            {
+                return;
+            }
+
             if (serverStarted)
             {
+                // A double-click would otherwise start and then immediately stop the server.
+                if (DateTime.UtcNow - _lastStartUtc < LifecycleClickGuard)
+                {
+                    logger.Warn("Stop ignored: the server was just started.");
+                    UpdateStatus("Stop ignored — server just started; click Stop again");
+                    return;
+                }
+
                 await StopProcessAsync().ConfigureAwait(true);
             }
             else
             {
+                if (DateTime.UtcNow - _lastStopUtc < LifecycleClickGuard)
+                {
+                    logger.Warn("Start ignored: the server was just stopped.");
+                    UpdateStatus("Start ignored — server just stopped; click Start again");
+                    return;
+                }
+
                 StartProcess();
             }
         }
+        catch (Exception ex)
+        {
+            logger.Error("Start/stop click failed unexpectedly.", ex);
+            UpdateStatus("Server action failed — see log");
+        }
+    }
 
     private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
     {
-        var proc = serverProc;
-        if (!serverStarted || proc == null || SafeProcessHasExited(proc))
+        if (_isClosing)
         {
+            return;
+        }
+
+        RefreshInstallerState();
+
+        if (_installInProgress || _installerExitUnconfirmed)
+        {
+            e.Cancel = true;
+            logger.Warn("Close refused: an install/update is in progress.");
+            UpdateStatus("Close blocked — install in progress");
+            MessageBox.Show(
+                this,
+                "An install/update is still running (or a SteamCMD process it started is still alive). Wait for SteamCMD to exit before closing the manager.",
+                "Install in progress",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        if (restartInProgress || _lifecycleDepth > 0)
+        {
+            e.Cancel = true;
+            logger.Warn("Close refused: a lifecycle operation is in progress.");
+            UpdateStatus("Close blocked — server operation in progress");
+            MessageBox.Show(
+                this,
+                "A start, stop, or restart is still in progress. Wait for it to finish before closing the manager.",
+                "Server operation in progress",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        var proc = serverProc;
+        if (proc is null)
+        {
+            _isClosing = true;
+            DisposeAutomationServiceOnClose();
+            return;
+        }
+
+        var alreadyExited = SafeProcessHasExited(proc);
+        if (!serverStarted || alreadyExited)
+        {
+            if (alreadyExited)
+            {
+                ReleaseServerProcess(proc);
+            }
+
+            _isClosing = true;
+            DisposeAutomationServiceOnClose();
             return;
         }
 
@@ -499,7 +927,9 @@ public partial class Form1 : Form
             }
         }
 
+        _isClosing = true;
         SynchronouslyShutdownServerForAppClose(notifyDiscord: interactiveClose);
+        DisposeAutomationServiceOnClose();
     }
 
     /// <summary>
@@ -542,20 +972,15 @@ public partial class Form1 : Form
             logger.Error("Shutdown cleanup failed while closing manager.", ex);
         }
 
-        lock (_serverProcDisposeLock)
+        if (SafeProcessHasExited(proc))
         {
-            if (ReferenceEquals(serverProc, proc))
-            {
-                serverProc = null;
-                try
-                {
-                    proc.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    logger.Warn($"Process dispose on manager exit failed: {ex.Message}");
-                }
-            }
+            ReleaseServerProcess(proc);
+        }
+        else
+        {
+            // Never dispose a handle whose exit is unconfirmed; the manager cannot track it after close.
+            _serverExitUnconfirmed = true;
+            logger.Error("Server process exit could not be confirmed while closing the manager; the handle is retained and not disposed.");
         }
 
         serverStarted = false;
@@ -577,44 +1002,41 @@ public partial class Form1 : Form
         try
         {
             var proc = serverProc;
-            if (proc == null || SafeProcessHasExited(proc))
+            if (proc == null)
             {
                 return;
             }
 
-            logger.Warn("Server process still running after close; applying best-effort kill.");
-            try
+            if (!SafeProcessHasExited(proc))
             {
-                proc.Kill(entireProcessTree: true);
-            }
-            catch (Exception ex)
-            {
-                logger.Warn($"Final kill on FormClosed failed: {ex.Message}");
-            }
-
-            try
-            {
-                proc.WaitForExit(3000);
-            }
-            catch
-            {
-                // best-effort
-            }
-
-            lock (_serverProcDisposeLock)
-            {
-                if (ReferenceEquals(serverProc, proc))
+                logger.Warn("Server process still running after close; applying best-effort kill.");
+                try
                 {
-                    serverProc = null;
-                    try
-                    {
-                        proc.Dispose();
-                    }
-                    catch
-                    {
-                        // best-effort
-                    }
+                    proc.Kill(entireProcessTree: true);
                 }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Final kill on FormClosed failed: {ex.Message}");
+                }
+
+                try
+                {
+                    proc.WaitForExit(3000);
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
+
+            if (SafeProcessHasExited(proc))
+            {
+                ReleaseServerProcess(proc);
+            }
+            else
+            {
+                _serverExitUnconfirmed = true;
+                logger.Error("Final kill on FormClosed could not confirm exit; the process handle is retained and not disposed.");
             }
         }
         catch (Exception ex)

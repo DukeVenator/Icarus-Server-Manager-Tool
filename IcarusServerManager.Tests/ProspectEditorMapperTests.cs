@@ -94,7 +94,7 @@ public sealed class ProspectEditorMapperTests
         var talents = ProspectModelMapper.ReadTalentRows(loaded.Prospect, mount.RecorderIndex);
 
         var applied = ProspectModelMapper.ApplyMountFromProspect(loaded.Prospect, mount, talents);
-        Assert.True(applied);
+        Assert.True(applied.Succeeded, applied.Describe());
 
         var refreshed = ProspectModelMapper.ReadMountsFromProspect(loaded.Prospect)
             .FirstOrDefault(x => x.RecorderIndex == mount.RecorderIndex);

@@ -59,4 +59,24 @@ public sealed class ManagerOptionsWebhookRoundTripTests : IDisposable
         Assert.Equal(12, loaded.DiscordWebhookHeartbeatIntervalHours);
         Assert.Equal(9, loaded.OptionsSchemaVersion);
     }
+
+    [Fact]
+    public void Load_SchemaEightWebhookFile_PreservesUrlAndConfiguredDescriptionLimit()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 8,
+              "EnableDiscordWebhook": true,
+              "DiscordWebhookUrl": "https://discord.com/api/webhooks/123456789/secret-token",
+              "DiscordWebhookDescriptionMaxChars": 900
+            }
+            """);
+
+        var loaded = new ManagerOptionsService(_path).Load();
+
+        Assert.True(loaded.EnableDiscordWebhook);
+        Assert.Equal("https://discord.com/api/webhooks/123456789/secret-token", loaded.DiscordWebhookUrl);
+        Assert.Equal(900, loaded.DiscordWebhookDescriptionMaxChars);
+        Assert.Equal(9, loaded.OptionsSchemaVersion);
+    }
 }

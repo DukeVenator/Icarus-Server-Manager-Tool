@@ -4,5 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Ships inside the manager zip, so it follows the manager release tag. -->
+    <MinVerTagPrefix>manager-v</MinVerTagPrefix>
   </PropertyGroup>
 </Project>

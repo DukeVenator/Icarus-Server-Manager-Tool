@@ -112,6 +112,50 @@ public sealed class ManagerOptionsSchemaMigrationTests : IDisposable
     }
 
     [Fact]
+    public void Load_SchemaThree_ImportsLegacyPortsBeforeAdvancingPastSchemaFour()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 3,
+              "LaunchGamePort": 17777,
+              "LaunchQueryPort": 27015
+            }
+            """);
+        var svc = new ManagerOptionsService(_path);
+
+        var o = svc.Load(() => (21212, 27323));
+
+        Assert.Equal(21212, o.LaunchGamePort);
+        Assert.Equal(27323, o.LaunchQueryPort);
+        Assert.Equal(9, o.OptionsSchemaVersion);
+
+        // Persisted by the migration, so the next load keeps the imported ports even if the legacy
+        // settings have since changed.
+        var again = new ManagerOptionsService(_path).Load(() => (17777, 27015));
+        Assert.Equal(21212, again.LaunchGamePort);
+        Assert.Equal(27323, again.LaunchQueryPort);
+    }
+
+    [Fact]
+    public void Load_SchemaFour_DoesNotOverwriteStoredPortsWithLegacyValues()
+    {
+        File.WriteAllText(_path, """
+            {
+              "OptionsSchemaVersion": 4,
+              "LaunchGamePort": 21313,
+              "LaunchQueryPort": 27424
+            }
+            """);
+        var svc = new ManagerOptionsService(_path);
+
+        var o = svc.Load(() => (17777, 27015));
+
+        Assert.Equal(21313, o.LaunchGamePort);
+        Assert.Equal(27424, o.LaunchQueryPort);
+        Assert.Equal(9, o.OptionsSchemaVersion);
+    }
+
+    [Fact]
     public void Load_MigratesSchemaV9_SetsManagerUpdateDefaults()
     {
         File.WriteAllText(_path, """

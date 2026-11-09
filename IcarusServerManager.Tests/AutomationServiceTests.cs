@@ -1,5 +1,7 @@
+using System.Net;
 using IcarusServerManager.Models;
 using IcarusServerManager.Services;
+using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace IcarusServerManager.Tests;
@@ -145,5 +147,210 @@ public sealed class AutomationServiceTests : IDisposable
         var loaded = svc.LoadProfile("a_b_c");
         Assert.NotNull(loaded);
         Assert.Equal("X", loaded.Value.Settings.SteamServerName);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_Success_UsesInjectedHandler_AndReturnsTrue()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        var diagnostics = new List<string>();
+        using var svc = new AutomationService(_dir, handler, diagnostics.Add);
+        var options = WebhookOptions();
+
+        var delivered = await svc.SendWebhookEventAsync(
+            options,
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined",
+            "Alice");
+
+        Assert.True(delivered);
+        Assert.Equal(1, handler.CallCount);
+        Assert.Equal(HttpMethod.Post, handler.LastMethod);
+        Assert.Equal(options.DiscordWebhookUrl, handler.LastRequestUri!.ToString());
+        Assert.Empty(diagnostics);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_NonSuccess_ReturnsFalse_AndReportsStatusCode()
+    {
+        using var handler = new StubHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound) { ReasonPhrase = "Not Found" });
+        var diagnostics = new List<string>();
+        using var svc = new AutomationService(_dir, handler, diagnostics.Add);
+
+        var delivered = await svc.SendWebhookEventAsync(
+            WebhookOptions(),
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined");
+
+        Assert.False(delivered);
+        Assert.Equal(1, handler.CallCount);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Contains("404", diagnostic, StringComparison.Ordinal);
+        Assert.Contains("discord.com", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_Timeout_ReturnsFalse_AndReportsFailure()
+    {
+        using var handler = new StubHttpMessageHandler(
+            _ => throw new TaskCanceledException("The request timed out."));
+        var diagnostics = new List<string>();
+        using var svc = new AutomationService(_dir, handler, diagnostics.Add);
+
+        var delivered = await svc.SendWebhookEventAsync(
+            WebhookOptions(),
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined");
+
+        Assert.False(delivered);
+        Assert.Equal(1, handler.CallCount);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Contains("failed", diagnostic, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("SECRET_TOKEN", diagnostic, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_DisposesResponseAfterSend()
+    {
+        var content = new TrackingHttpContent();
+        using var handler = new StubHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        using var svc = new AutomationService(_dir, handler, _ => { });
+
+        Assert.True(await svc.SendWebhookEventAsync(
+            WebhookOptions(),
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined"));
+        Assert.True(content.Disposed, "The response (and its content) must be disposed by the sender.");
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_TruncatesDescriptionToConfiguredLimitIncludingEllipsis()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        using var svc = new AutomationService(_dir, handler, _ => { });
+        var options = WebhookOptions();
+        options.DiscordWebhookDescriptionMaxChars = 900;
+        var longDescription = new string('x', 5000);
+
+        Assert.True(await svc.SendWebhookEventAsync(
+            options,
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined",
+            longDescription));
+
+        var json = JObject.Parse(handler.LastBody!);
+        var description = json["embeds"]![0]!["description"]!.ToString();
+        Assert.Equal(900, description.Length);
+        Assert.EndsWith("…", description, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_Diagnostics_DoNotLeakUrlPathTokenOrResponseBody()
+    {
+        const string token = "SUPER_SECRET_TOKEN";
+        const string responseBody = "response body that contains " + token;
+        using var handler = new StubHttpMessageHandler(
+            _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                ReasonPhrase = "Server Error",
+                Content = new StringContent(responseBody)
+            });
+        var diagnostics = new List<string>();
+        using var svc = new AutomationService(_dir, handler, diagnostics.Add);
+        var options = WebhookOptions($"https://discord.com/api/webhooks/123456789/{token}");
+
+        Assert.False(await svc.SendWebhookEventAsync(
+            options,
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined",
+            "Details"));
+
+        var allDiagnostics = string.Join("\n", diagnostics);
+        Assert.Contains("500", allDiagnostics, StringComparison.Ordinal);
+        Assert.Contains("discord.com", allDiagnostics, StringComparison.Ordinal);
+        Assert.DoesNotContain(token, allDiagnostics, StringComparison.Ordinal);
+        Assert.DoesNotContain("/api/webhooks", allDiagnostics, StringComparison.Ordinal);
+        Assert.DoesNotContain("response body", allDiagnostics, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SendWebhookEventAsync_WhenDisabled_DoesNotInvokeTransport()
+    {
+        using var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK));
+        using var svc = new AutomationService(_dir, handler, _ => { });
+        var options = WebhookOptions();
+        options.EnableDiscordWebhook = false;
+
+        Assert.False(await svc.SendWebhookEventAsync(
+            options,
+            DiscordWebhookEventKind.PlayerJoin,
+            "Player joined"));
+        Assert.Equal(0, handler.CallCount);
+    }
+
+    private static ManagerOptions WebhookOptions(
+        string url = "https://discord.com/api/webhooks/123/SECRET_TOKEN") =>
+        new()
+        {
+            EnableDiscordWebhook = true,
+            DiscordWebhookUrl = url,
+            DiscordWebhookNotifyPlayerJoin = true,
+            DiscordWebhookUseEmbeds = true,
+            DiscordWebhookDescriptionMaxChars = 3500
+        };
+
+    private sealed class StubHttpMessageHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, HttpResponseMessage> _respond;
+
+        public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        {
+            _respond = respond;
+        }
+
+        public int CallCount { get; private set; }
+
+        public HttpMethod? LastMethod { get; private set; }
+
+        public Uri? LastRequestUri { get; private set; }
+
+        public string? LastBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            CallCount++;
+            LastMethod = request.Method;
+            LastRequestUri = request.RequestUri;
+            if (request.Content is not null)
+            {
+                LastBody = await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            return _respond(request);
+        }
+    }
+
+    private sealed class TrackingHttpContent : HttpContent
+    {
+        public bool Disposed { get; private set; }
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            Task.CompletedTask;
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return true;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
     }
 }

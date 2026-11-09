@@ -8,7 +8,7 @@ static class Program
     ///  The main entry point for the application.
     /// </summary>
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
         Application.ThreadException += (_, exArgs) =>
         {
@@ -29,6 +29,6 @@ static class Program
         };
         ApplicationConfiguration.Initialize();
         AppLogService.LogSessionStart();
-        Application.Run(new MainForm());
+        Application.Run(new MainForm(StartupArguments.GetProspectPath(args)));
     }    
 }

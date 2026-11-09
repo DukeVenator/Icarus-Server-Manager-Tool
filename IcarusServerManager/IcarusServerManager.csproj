@@ -13,10 +13,8 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Default for local/PR builds. Official manager-v* / v* release zips embed version from the tag via release-manager.yml (-p overrides). -->
-    <Version>2.0.2</Version>
-    <AssemblyVersion>2.0.2.0</AssemblyVersion>
-    <FileVersion>2.0.2.0</FileVersion>
+    <!-- Manager releases are tagged manager-vX.Y.Z; MinVer derives the version from that tag. -->
+    <MinVerTagPrefix>manager-v</MinVerTagPrefix>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,14 +39,19 @@
     </None>
   </ItemGroup>
 
-  <Target Name="CopyUpdaterToOutput" AfterTargets="Build">
+  <Target Name="CopyUpdaterToOutput" AfterTargets="Build;Publish">
+    <PropertyGroup>
+      <_UpdaterBinDir Condition="'$(RuntimeIdentifier)' != ''">$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows\$(RuntimeIdentifier)</_UpdaterBinDir>
+      <_UpdaterBinDir Condition="'$(RuntimeIdentifier)' == ''">$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows</_UpdaterBinDir>
+    </PropertyGroup>
     <ItemGroup>
-      <_UpdaterOutputs Include="$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows\ManagerUpdater.exe" />
-      <_UpdaterOutputs Include="$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows\ManagerUpdater.dll" />
-      <_UpdaterOutputs Include="$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows\ManagerUpdater.deps.json" />
-      <_UpdaterOutputs Include="$(MSBuildProjectDirectory)\..\ManagerUpdater\bin\$(Configuration)\net8.0-windows\ManagerUpdater.runtimeconfig.json" />
+      <_UpdaterOutputs Include="$(_UpdaterBinDir)\ManagerUpdater.exe" />
+      <_UpdaterOutputs Include="$(_UpdaterBinDir)\ManagerUpdater.dll" />
+      <_UpdaterOutputs Include="$(_UpdaterBinDir)\ManagerUpdater.deps.json" />
+      <_UpdaterOutputs Include="$(_UpdaterBinDir)\ManagerUpdater.runtimeconfig.json" />
     </ItemGroup>
     <Copy SourceFiles="@(_UpdaterOutputs)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('%(Identity)')" />
+    <Copy SourceFiles="@(_UpdaterOutputs)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'$(PublishDir)' != '' and Exists('%(Identity)')" />
   </Target>
 
 </Project>

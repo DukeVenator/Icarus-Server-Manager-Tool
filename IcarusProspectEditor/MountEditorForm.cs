@@ -34,6 +34,12 @@ internal sealed class MountEditorForm : Form
     private SplitContainer? _geneticsSplit;
     private RecorderFieldsEditorTabs? _advancedRecorderEditor;
     private TalentRemapResult? _pendingSwap;
+    private string? _pendingSwapFrom;
+    private string? _pendingSwapSpecies;
+    private string? _pendingSwapSignature;
+    private int _pendingSwapTalentStamp;
+    private int _talentStamp;
+    private readonly string _originalSpecies;
     private readonly TalentIconDiskImageCache _talentIconCache = new();
     private bool _isDarkTheme;
     private readonly Dictionary<string, string> _talentCellBeforeValues = new(StringComparer.Ordinal);
@@ -53,16 +59,21 @@ internal sealed class MountEditorForm : Form
     public IReadOnlyList<TalentRow> UpdatedTalents => _talents.ToList();
     public IReadOnlyList<RecorderFieldRow> UpdatedAdvancedFields => _advancedFields.ToList();
 
+    /// <summary>
+    /// The dialog edits deep copies of the mount, talent list, and advanced recorder fields. Cancel
+    /// therefore cannot leak changes into the document, and OK commits exactly one draft.
+    /// </summary>
     public MountEditorForm(
         MountRow mount,
         IEnumerable<TalentRow> talents,
         IEnumerable<RecorderFieldRow> advancedFields,
         IEnumerable<MemberRow> knownPlayers)
     {
-        _mount = mount;
-        _talents = new BindingList<TalentRow>(talents.ToList());
-        _advancedFields = new BindingList<RecorderFieldRow>(advancedFields.ToList());
+        _mount = mount.Clone();
+        _talents = new BindingList<TalentRow>(talents.Select(t => t.Clone()).ToList());
+        _advancedFields = new BindingList<RecorderFieldRow>(advancedFields.Select(f => f.Clone()).ToList());
         _knownPlayers = knownPlayers.ToList();
+        _originalSpecies = MountSpeciesMetadataService.NormalizeSpecies(_mount.MountType, _mount.MountRace);
         Text = $"Edit Mount - {mount.MountName}";
         Width = 980;
         Height = 760;
@@ -124,6 +135,17 @@ internal sealed class MountEditorForm : Form
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
         apply.Click += (_, e) =>
         {
+            // Publish the wizard's currently visible value first; an invalid value blocks Apply
+            // instead of being silently discarded.
+            var advancedResult = _advancedRecorderEditor?.CommitCurrentValue();
+            if (advancedResult is not null && !advancedResult.Succeeded)
+            {
+                AppLogService.UserAction($"Mount apply blocked by advanced field validation: '{_mount.MountName}' (recorder {_mount.RecorderIndex}).");
+                MessageBox.Show(advancedResult.Describe(), "Invalid advanced field value", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                DialogResult = DialogResult.None;
+                return;
+            }
+
             if (!UpdateValidation())
             {
                 AppLogService.UserAction($"Mount apply blocked by validation: '{_mount.MountName}' (recorder {_mount.RecorderIndex}).");
@@ -311,14 +333,21 @@ internal sealed class MountEditorForm : Form
         _ownerCharacterSlot.Value = _mount.OwnerCharacterSlot;
         _ownerName.Text = _mount.OwnerName;
         _species.Items.Clear();
-        _species.Items.AddRange(MountSpeciesMetadataService.GetSpeciesOptions().Cast<object>().ToArray());
+        var speciesOptions = MountSpeciesMetadataService.GetSpeciesOptions().ToList();
         var normalized = MountSpeciesMetadataService.NormalizeSpecies(_mount.MountType, _mount.MountRace);
-        _species.SelectedItem = _species.Items.Cast<object>()
-            .Select(x => x.ToString())
-            .FirstOrDefault(x => x?.Equals(normalized, StringComparison.OrdinalIgnoreCase) == true)
-            ?? _species.Items.Cast<object>().FirstOrDefault();
+        var speciesIndex = speciesOptions.FindIndex(s => string.Equals(s, normalized, StringComparison.OrdinalIgnoreCase));
+        if (speciesIndex < 0 && normalized.Length > 0)
+        {
+            // Preserve a stored species that is not in the metadata allowlist instead of silently
+            // selecting an unrelated first entry. Validation reports it and blocks Apply until the
+            // user chooses a known species.
+            speciesOptions.Insert(0, normalized);
+            speciesIndex = 0;
+        }
+
+        _species.Items.AddRange(speciesOptions.Cast<object>().ToArray());
+        _species.SelectedIndex = speciesIndex;
         RefreshVariationOptions();
-        _variation.SelectedItem = _mount.Variation.ToString();
         _level.Value = _mount.Level;
         _xp.Value = _mount.Experience;
         _health.Value = _mount.Health;
@@ -344,8 +373,19 @@ internal sealed class MountEditorForm : Form
         _mount.OwnerPlayerId = _ownerPlayerId.Text.Trim();
         _mount.OwnerCharacterSlot = (int)_ownerCharacterSlot.Value;
         _mount.OwnerName = _ownerName.Text.Trim();
-        _mount.MountRace = _species.Text.Trim();
-        _mount.MountType = $"Mount_{_mount.MountRace}";
+        var selectedSpecies = _species.Text.Trim();
+        _mount.MountRace = selectedSpecies;
+        if (!string.Equals(selectedSpecies, _originalSpecies, StringComparison.OrdinalIgnoreCase))
+        {
+            // Only a deliberate species change rewrites the type string; an untouched/unknown stored
+            // type is preserved exactly.
+            _mount.MountType = $"Mount_{selectedSpecies}";
+        }
+        else if (string.IsNullOrWhiteSpace(_mount.MountType))
+        {
+            _mount.MountType = $"Mount_{_originalSpecies}";
+        }
+
         _mount.Variation = int.TryParse(_variation.Text, out var variation) ? variation : 0;
         _mount.Level = (int)_level.Value;
         _mount.Experience = MountSpeciesMetadataService.ClampRiskyInt((int)_xp.Value);
@@ -398,6 +438,7 @@ internal sealed class MountEditorForm : Form
         _species.SelectedIndexChanged += (_, _) =>
         {
             AppLogService.UserAction($"Mount species dropdown changed: '{_mount.MountName}' -> {_species.Text.Trim()}.");
+            InvalidatePendingSwap();
             RefreshVariationOptions();
         };
         AddField(grid, row, "Species", panel);
@@ -466,7 +507,15 @@ internal sealed class MountEditorForm : Form
             return;
         }
 
-        var remap = _pendingSwap ?? MountSpeciesMetadataService.RemapTalentsForSpecies(_talents, from, to);
+        if (from.Length == 0 || to.Length == 0)
+        {
+            // The metadata remap needs a species token to replace; never call it with an unknown
+            // (empty) source species.
+            _swapSummary.Text = "The stored species is unknown. Select a target species before swapping.";
+            return;
+        }
+
+        var remap = GetOrCreateRemap(from, to);
         if (remap.DroppedCount > 0)
         {
             var confirm = MessageBox.Show(
@@ -487,11 +536,12 @@ internal sealed class MountEditorForm : Form
             _talents.Add(talent);
         }
         _talents.RaiseListChangedEvents = true;
+        _talentStamp++;
         _talents.ResetBindings();
         _mount.MountRace = to;
         _mount.MountType = $"Mount_{to}";
         _swapSummary.Text = $"{remap.RemappedCount} renamed, {remap.AddedCount} added, {remap.DroppedCount} dropped, {remap.UnchangedCount} unchanged, {remap.LostPoints} points lost";
-        _pendingSwap = null;
+        InvalidatePendingSwap();
         AppLogService.UserAction($"Mount species swap applied: '{_mount.MountName}' {from} -> {to} (recorder {_mount.RecorderIndex}).");
 
         if (_talentsGrid is not null)
@@ -499,7 +549,7 @@ internal sealed class MountEditorForm : Form
             _talentsGrid.ClearSelection();
             for (var i = 0; i < _talents.Count; i++)
             {
-                if (_talents[i].Name.Contains(to, StringComparison.OrdinalIgnoreCase))
+                if ((_talents[i].Name ?? string.Empty).Contains(to, StringComparison.OrdinalIgnoreCase))
                 {
                     _talentsGrid.Rows[i].Selected = true;
                 }
@@ -513,9 +563,53 @@ internal sealed class MountEditorForm : Form
     {
         var from = MountSpeciesMetadataService.NormalizeSpecies(_mount.MountType, _mount.MountRace);
         var to = _species.Text.Trim();
+        if (from.Length == 0 || to.Length == 0)
+        {
+            InvalidatePendingSwap();
+            _swapSummary.Text = "The stored species is unknown. Select a target species before previewing.";
+            return;
+        }
+
         _pendingSwap = MountSpeciesMetadataService.RemapTalentsForSpecies(_talents, from, to);
+        _pendingSwapFrom = from;
+        _pendingSwapSpecies = to;
+        _pendingSwapSignature = BuildTalentSignature();
+        _pendingSwapTalentStamp = _talentStamp;
         _swapSummary.Text = $"Preview -> renamed: {_pendingSwap.RemappedCount}, added: {_pendingSwap.AddedCount}, dropped: {_pendingSwap.DroppedCount}, lost points: {_pendingSwap.LostPoints}";
         AppLogService.UserAction($"Mount species swap preview: '{_mount.MountName}' {from} -> {to}.");
+    }
+
+    /// <summary>
+    /// A cached preview is only valid for the exact source/target species and talent values it was
+    /// computed from. TalentRow does not raise change notifications, so a value signature (not the
+    /// list-change stamp alone) is compared; preview Buffalo, edit a rank, then swap Moa recomputes.
+    /// </summary>
+    private TalentRemapResult GetOrCreateRemap(string from, string to)
+    {
+        if (_pendingSwap is not null &&
+            _pendingSwapTalentStamp == _talentStamp &&
+            string.Equals(_pendingSwapFrom, from, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_pendingSwapSpecies, to, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_pendingSwapSignature, BuildTalentSignature(), StringComparison.Ordinal))
+        {
+            return _pendingSwap;
+        }
+
+        InvalidatePendingSwap();
+        return MountSpeciesMetadataService.RemapTalentsForSpecies(_talents, from, to);
+    }
+
+    private string BuildTalentSignature() =>
+        string.Join(
+            "\u001e",
+            _talents.Select(t => $"{t.Name}\u001f{t.Rank}\u001f{t.MaxRank}"));
+
+    private void InvalidatePendingSwap()
+    {
+        _pendingSwap = null;
+        _pendingSwapFrom = null;
+        _pendingSwapSpecies = null;
+        _pendingSwapSignature = null;
     }
 
     private bool UpdateValidation()
@@ -527,12 +621,44 @@ internal sealed class MountEditorForm : Form
             Level = (int)_level.Value,
             OwnerPlayerId = _ownerPlayerId.Text.Trim()
         };
-        var issues = MountSpeciesMetadataService.ValidateMount(probe);
+        var issues = new List<string>(MountSpeciesMetadataService.ValidateMount(probe));
+        issues.AddRange(ValidateTalentDraft());
         _validation.Text = issues.Count == 0 ? "Valid" : string.Join(" | ", issues);
         _validation.ForeColor = issues.Count == 0
             ? ThemeHighlightColors.ValidationOk(_isDarkTheme)
             : Color.OrangeRed;
         return issues.Count == 0;
+    }
+
+    /// <summary>
+    /// Mirrors the mapper's talent validation in the dialog so an empty/duplicate name or an
+    /// out-of-range rank blocks Apply with a visible reason instead of failing after the dialog closes.
+    /// </summary>
+    private IEnumerable<string> ValidateTalentDraft()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < _talents.Count; i++)
+        {
+            var talent = _talents[i];
+            var name = talent.Name?.Trim() ?? string.Empty;
+            if (name.Length == 0)
+            {
+                yield return $"Talent row {i + 1} has no name.";
+                continue;
+            }
+
+            if (!seen.Add(name))
+            {
+                yield return $"Duplicate talent name '{name}'.";
+                continue;
+            }
+
+            var maxRank = Math.Max(1, talent.MaxRank);
+            if (talent.Rank < 0 || talent.Rank > maxRank)
+            {
+                yield return $"Talent '{name}' rank must be between 0 and {maxRank}.";
+            }
+        }
     }
 
     private Chart BuildGeneticsChart()
@@ -569,6 +695,8 @@ internal sealed class MountEditorForm : Form
 
     private void TalentsOnListChanged(object? sender, ListChangedEventArgs e)
     {
+        _talentStamp++;
+        InvalidatePendingSwap();
         switch (e.ListChangedType)
         {
             case ListChangedType.Reset:

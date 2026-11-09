@@ -34,3 +34,7 @@ SufferingResort.decoded.json
 /*.decoded.json
 !IcarusServerManager.Tests/TestData/
 !IcarusServerManager.Tests/TestData/**
+
+# Local tooling and scratch output
+.dotnet-home/
+/artifacts/

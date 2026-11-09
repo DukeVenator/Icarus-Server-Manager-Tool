@@ -20,8 +20,13 @@ internal enum RecorderCategory
 
 internal sealed class ProspectDocument
 {
-    public required string ProspectPath { get; init; }
-    public required ProspectSave Prospect { get; init; }
+    /// <summary>
+    /// Active path. Only changes after a successful Open or Save As; cancelled or failed
+    /// operations leave the previously active document path in place.
+    /// </summary>
+    public string ProspectPath { get; set; } = string.Empty;
+
+    public ProspectSave Prospect { get; set; } = new();
 }
 
 internal sealed class RecorderRow
@@ -41,10 +46,19 @@ internal sealed class RecorderFieldRow
     public string PropertyType { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;
     public bool Editable { get; set; }
+
+    internal RecorderFieldRow Clone() => (RecorderFieldRow)MemberwiseClone();
 }
 
 internal sealed class MemberRow
 {
+    /// <summary>
+    /// Session-local identity. Never written to the save file; used so reverting a renamed row
+    /// restores that row instead of deleting it.
+    /// </summary>
+    [System.ComponentModel.Browsable(false)]
+    public Guid RowId { get; set; } = Guid.NewGuid();
+
     public string AccountName { get; set; } = string.Empty;
     public string CharacterName { get; set; } = string.Empty;
     public string UserID { get; set; } = string.Empty;
@@ -57,12 +71,18 @@ internal sealed class MemberRow
 
 internal sealed class CustomSettingRow
 {
+    [System.ComponentModel.Browsable(false)]
+    public Guid RowId { get; set; } = Guid.NewGuid();
+
     public string SettingRowName { get; set; } = string.Empty;
     public int SettingValue { get; set; }
 }
 
 internal sealed class MountRow
 {
+    [System.ComponentModel.Browsable(false)]
+    public Guid RowId { get; set; } = Guid.NewGuid();
+
     public int RecorderIndex { get; set; }
     public string RecorderPath { get; set; } = string.Empty;
     public string MountName { get; set; } = string.Empty;
@@ -88,6 +108,8 @@ internal sealed class MountRow
     public string AiSetupRowName { get; set; } = string.Empty;
     public string ActorClassName { get; set; } = string.Empty;
     public string ActorPathName { get; set; } = string.Empty;
+
+    internal MountRow Clone() => (MountRow)MemberwiseClone();
 }
 
 internal sealed class TalentRow
@@ -98,4 +120,6 @@ internal sealed class TalentRow
     public string DisplayName { get; set; } = string.Empty;
     public string IconKey { get; set; } = string.Empty;
     public string RemapStatus { get; set; } = "Unchanged";
+
+    internal TalentRow Clone() => (TalentRow)MemberwiseClone();
 }

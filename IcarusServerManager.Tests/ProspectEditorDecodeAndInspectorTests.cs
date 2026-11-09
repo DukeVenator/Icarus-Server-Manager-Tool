@@ -44,9 +44,11 @@ public sealed class ProspectEditorDecodeAndInspectorTests
         editable.Value = updatedValue;
 
         var updated = ProspectModelMapper.ApplyRecorderFieldEdits(document.Prospect, selected.Index, fields);
-        Assert.True(updated);
+        Assert.True(updated.Succeeded, updated.Describe());
+        Assert.True(updated.Changed);
 
-        ProspectSaveService.SaveDocument(document, createBackup: false);
+        var saveResult = ProspectSaveService.SaveDocument(document);
+        Assert.True(saveResult.Succeeded, saveResult.Error);
 
         var reloaded = ProspectLoadService.Load(tempProspectPath);
         var reloadedFields = ProspectModelMapper.ReadRecorderFields(reloaded.Prospect, selected.Index);

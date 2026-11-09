@@ -165,8 +165,6 @@ edited, and failed operations.
 
 More editor views (Members, Characters / Recorder Inspector, Diagnostics, Talents, Raw recorder fields) are also documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
 
-Screenshots are captured from the current build by the visual test harness, so they stay in step with the UI rather than drifting from an old release.
-
 ---
 
 ## Common Tasks

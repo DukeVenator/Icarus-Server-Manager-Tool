@@ -7,10 +7,14 @@
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE.md)
 [![.NET 8](https://img.shields.io/badge/.NET-8-512BD4)](https://dotnet.microsoft.com/download/dotnet/8.0)
 
-This repo has two Windows tools that make Icarus hosting and prospect editing easier:
+I run an Icarus dedicated server for my tabletop group. After too many nights spent hand-editing
+JSON and checking whether the server had actually stayed up, I wrote two small Windows tools to do
+the boring parts for me.
 
-- **Icarus Server Manager**: install, configure, run, monitor, and maintain a dedicated server without hand-editing everything.
-- **Icarus Prospect Editor**: edit prospect JSON safely with validation, backups, and advanced mount tooling.
+- **Icarus Server Manager** installs, configures, runs and watches the dedicated server.
+- **Icarus Prospect Editor** edits prospect saves without turning them into soup.
+
+They're free, they're what my group uses, and 3.0 is the version I'm happiest with so far.
 
 <!-- MANAGER_RELEASE_BLOCK -->
 **Latest Server Manager release:** [manager-v3.0.0](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/releases/tag/manager-v3.0.0) — on that page, download **IcarusServerManager-manager-v3.0.0-win-x64.zip** from **Assets** (Windows; requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)).
@@ -22,138 +26,200 @@ This repo has two Windows tools that make Icarus hosting and prospect editing ea
 
 **Last tested with Icarus Dedicated Server build:** 230
 
-> **New in 3.0 — a reliability rewrite.** Both tools were rebuilt around one rule: never claim an
-> operation succeeded before it did. Saves stage and verify before replacing your file, editor drafts
-> survive refreshes and recorder removal, mount and talent edits apply as a single transaction, and
-> the manager keeps ownership of a server it cannot confirm has stopped. The editor also received a
-> full UI refresh, and the screenshots below are anonymised captures of the current build.
-> See [CHANGELOG.md](CHANGELOG.md) for the full list.
+> **3.0 is a rewrite, not a feature drop.** I rebuilt both tools around one rule: don't say
+> something worked until it has. Saves are written to a temporary file, read back, then swapped in.
+> Editor drafts survive refreshes and recorder removal. Mount fields and talents apply together.
+> The manager keeps hold of a server it can't confirm has stopped instead of starting a second one.
+> The editor also got a proper UI pass. Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
-## Pick Your Tool
+## Which one do I need?
 
-### Use Server Manager if you want to
-- Install/update Icarus dedicated server with SteamCMD.
-- Start/stop the server from a UI with safer shutdown handling.
-- Configure INI settings, restart policies, Discord notifications, and console filters.
-- Watch live stats (CPU, memory, uptime, restart history, player hints).
+**The manager**, if you want to:
 
-### Use Prospect Editor if you want to
-- Open and edit decoded prospect JSON.
-- Update metadata, members, custom settings, and mount details.
-- Use mount species swap/remap tools with validation and range clamping.
-- Export decoded data and inspect low-level recorder fields when needed.
+- install or update the dedicated server without fighting SteamCMD by hand
+- start, stop and restart it from a window instead of a console you forgot to keep open
+- change INI settings, keep backups, and see CPU, memory and uptime
+- get a Discord ping when something happens
+
+**The editor**, if you want to:
+
+- fix a prospect's name, difficulty or expiry
+- add, remove or rename members and custom settings
+- edit a mount's species, genetics or talents without touching raw binary
+- look at recorder data when something has gone weird
+
+The two apps don't depend on each other. Use one, the other, or both.
 
 ---
 
-## Quick Start: Server Manager
+## Server Manager quick start
 
-1. Download the manager zip from the **Latest Server Manager release** block above.
-2. Extract and run `IcarusServerManager.exe`.
-3. In **Manager Settings**, set **Server install folder** (or run **Setup wizard**).
+1. Download the manager zip from the release block above.
+2. Extract it somewhere sensible and run `IcarusServerManager.exe`.
+3. Open **Manager Settings**, set the server install folder, or run the **Setup wizard**.
 4. Click **Install/Update Server**.
-5. In **Server Settings**, set name/ports/options.
+5. Fill in **Server Settings**.
 6. Click **Save to INI**, then **Save Manager Options**.
 7. Click **Start Server** and watch the **Console** tab.
-8. Optional: enable restart policies and Discord notifications after first stable run.
+8. Once it has run cleanly for a while, set up restart policies and Discord notifications.
+
+The first install pulls a few gigabytes through SteamCMD. The window stays usable while it runs,
+and it refuses to start the server until the install actually produced a server executable.
 
 ---
 
-## Quick Start: Prospect Editor
+## Prospect Editor quick start
 
-1. Download `IcarusProspectEditor-<tag>-win-x64.zip` from the latest editor release.
-2. Extract and run `IcarusProspectEditor.exe`.
-3. Click **Open Prospect** and select a decoded prospect JSON file. You can also pass one on the
-   command line: `IcarusProspectEditor.exe "C:\path\to\prospect.json"` (or `--open <path>`).
-4. Edit values in tabs (Metadata, Members, Custom Settings, Mounts).
-5. Click **Save**.
+1. Download the editor zip from the release block above.
+2. Extract it and run `IcarusProspectEditor.exe`.
+3. Click **Open Prospect** and pick a prospect JSON. You can also hand it a file on the command
+   line: `IcarusProspectEditor.exe "C:\path\to\prospect.json"` or `--open <path>`. Dragging a file
+   onto the exe works too.
+4. Edit what you need. The tabs are Metadata, Members, Custom Settings, Characters, Missions,
+   Prebuilts, Mounts and Diagnostics.
+5. Click **Save**. You get a confirmation with a summary first, and a `.bak` of the old file every
+   time.
 
-![Prospect Editor — Metadata tab](screenshots/editor/metadata.png)
-### Important Safety Warning
+![Prospect Editor: metadata tab](screenshots/editor/metadata.png)
 
-- Always keep separate backups of your save/prospect files before editing.
-- The editor includes backup-on-save and validation, but advanced edits can still create bad or game-incompatible data.
-- You accept all risk for edits. The project maintainers are not liable for data loss, corruption, or broken saves.
+### Please keep your own backups
 
----
+The editor writes a backup and validates before replacing anything, but it cannot save you from an
+edit that is valid JSON and nonsense to the game.
 
-## Server Manager Features
+- Keep a copy of the prospect outside the editor's backup chain.
+- Use **Save As** before a big change.
+- Treat the Advanced raw field editors as a last resort.
 
-- Install or update the game server with one click.
-- Start and stop the server from the app.
-- Force stop if the server gets stuck.
-- Setup wizard to help first-time users.
-- Auto-restart after crashes.
-- Auto-restart on a schedule (for example every X hours).
-- Auto-restart if memory gets too high.
-- Auto-restart when the server is empty.
-- Daily maintenance window for planned restarts.
-- Safer shutdown that gives the server time to save.
-- Console with filters so it is easy to read.
-- Preset log views (Minimal, Balanced, Verbose, QuietGame, Custom).
-- Stats view with CPU, memory, and uptime.
-- Chart history to spot issues over time.
-- Export stats to CSV for troubleshooting.
-- Last World view to check active prospect info.
-- Prospect picker to swap the active world easily.
-- Save and load server presets.
-- Export and import full config bundles.
-- One-click INI backup.
-- World backup to zip or folder.
-- Discord notifications with on/off toggles per event.
-- Spam control for busy Discord channels.
-- Light and dark theme.
-- Built-in update checker for the app itself.
+You accept the risk of editing your own saves. I can't be liable for lost worlds or corrupted
+prospects.
 
 ---
 
-## Prospect Editor Features
+## What the manager does
 
-- Open and edit decoded prospect files.
-- Edit prospect info like name and difficulty.
-- Edit member info.
-- Edit custom settings.
-- Edit mounts in a dedicated mount editor.
-- Change a mount to a different species.
-- Preview a species swap before applying it.
-- Simple views for genetics and talents.
-- Safer number ranges so you cannot enter extreme values.
-- Highlights for unsaved changes.
-- Revert all unsaved changes in one click.
-- Revert single rows in some tabs.
-- Automatic backup copy when saving over an existing file.
-- Warnings before risky actions.
-- Export decoded data for diagnostics.
-- Fast export or detailed export options.
-- Inspect raw fields (advanced only).
-- Light and dark theme.
-- Built-in update checker for the editor itself.
+**Installing and running**
 
-### Dedicated Mount Editor
+- Installs or updates the dedicated server through SteamCMD.
+- Starts, stops, restarts and force-stops it from the app.
+- Only one lifecycle operation can own the server at a time.
+- If a stop can't confirm the process exited, the manager keeps the handle and refuses to launch a
+  replacement. Better a stuck server than two of them.
+- Refuses to close mid-operation or mid-install.
 
-Mounts have a dedicated editor with an **Overview** tab for species swaps with preview/validation, a **Genetics** tab with a radar visualization and clamped sliders, a **Talents** tab for reviewing talent ranks, and an **Advanced** tab for raw recorder fields (power-user only).
+**Keeping it alive**
 
-![Mount Editor — Overview tab with species swap](screenshots/editor/mountwizard.png)
+- Restarts after a crash, with a retry budget that only resets after ten stable minutes.
+- Restarts on a schedule (every X hours) and inside a daily maintenance window.
+- Restarts when memory stays too high or when the server has been empty too long.
+- A manager-initiated shutdown is never counted as a crash.
 
-![Mount Editor — Genetics radar view](screenshots/editor/mountradar.png)
+**Seeing what's happening**
 
-![Mount Editor — Talents tab](screenshots/editor/mounttalent.png)
+- Console with filters and presets (Minimal, Balanced, Verbose, QuietGame, Custom).
+- CPU, memory and uptime stats, with a chart and CSV export.
+- Last World view, plus a prospect picker for swapping the active world.
+- Player hints parsed from the server log.
 
-![Mount Editor — Advanced raw fields](screenshots/editor/mountraw.png)
+**Config and backups**
 
-### More editor screenshots
+- Server Settings editor that writes the INI for you.
+- Save and load presets, export and import full config bundles.
+- One-click INI backup, plus world backups to a zip or folder.
+- Light and dark theme, and a built-in update checker for the manager itself.
+- Options migrate automatically, with a backup. A malformed options file is left alone rather than
+  overwritten with defaults.
 
-The editor shell keeps all eight tabs, both themes, and a status bar that distinguishes saved,
-edited, and failed operations.
+**Discord**
 
-![Editor shell — light theme](screenshots/editor/shell-light.png)
+- Notifications for lifecycle, player and operational events, each with its own toggle.
+- Spam control for busy channels.
+- Diagnostics record the host, status code and exception type. URLs, tokens, payloads and response
+  bodies stay out of the logs.
 
-![Editor shell — dark theme](screenshots/editor/shell-dark.png)
+**Scheduled restarts** are restarts only. They never run SteamCMD updates, and the labels say so.
+A late timer tick still counts for 15 minutes instead of silently skipping the day.
+
+---
+
+## What the editor does
+
+**Opening and saving**
+
+- Opens encoded prospect saves directly.
+- Saves to a temp file, reads it back as a valid prospect, then swaps it in.
+- Creates a backup before replacing anything, and never deletes backups for you.
+- Keeps your unsaved drafts out of the live document until the save has actually succeeded.
+- Save As only moves the document path after the new file is written.
+
+**Editing**
+
+- Metadata: identity, ownership, gameplay and timing fields, with an Advanced identifiers section.
+- Members and custom settings, including row-level revert.
+- Eight tabs, including Characters, Missions and Prebuilts recorder views.
+- A recorder inspector for the raw fields, if you really need it.
+- Validation per field. A bad value blocks the whole save instead of half-applying.
+- Warnings before actions that can break a live world.
+
+**Mounts**
+
+- A dedicated mount editor with Overview, Genetics, Talents and Advanced tabs.
+- Species swap with a preview tied to the species and talents it was calculated from.
+- Genetics radar and clamped sliders.
+- Talent rank changes, additions and deletions that actually reach the save.
+- Unknown stored species stay selectable instead of being replaced by whatever is first in the list.
+
+**Not losing work**
+
+- Recorder edits and removals count as unsaved changes.
+- Removing recorders keeps pending metadata, member, setting and mount edits.
+- Revert Selected restores the row you changed, rather than deleting it.
+- Revert All reloads from disk after a confirmation.
+- Closing or opening another prospect offers Save, Discard or Cancel.
+
+**Interface**
+
+- Responsive layout that reflows instead of clipping when the window is narrow.
+- Light and dark themes, including the menu bar and tab strip.
+- Built-in update checker for the editor.
+- Sortable tables, with a sort glyph. Sorting doesn't mark the document dirty.
+- Header shows the prospect name, a middle-ellipsized path, and a Copy path button.
+- Accessible names on inputs, checkboxes, the tab strip and every grid.
+- Keyboard shortcuts that are actually bound (Ctrl+O, Ctrl+S, Ctrl+Shift+S, Ctrl+E, Ctrl+R,
+  Ctrl+Shift+R, F5).
+
+**Exports**
+
+- Raw or enriched decoded JSON export, from a snapshot taken when the export starts.
+- Refuses to write over the source file, including relative-path and case aliases.
+- Refuses to overwrite an existing file that still reads as an encoded prospect.
+
+### Mount editor screenshots
+
+![Mount editor: species swap](screenshots/editor/mountwizard.png)
+
+![Mount editor: genetics radar](screenshots/editor/mountradar.png)
+
+![Mount editor: talents](screenshots/editor/mounttalent.png)
+
+![Mount editor: advanced raw fields](screenshots/editor/mountraw.png)
+
+---
+
+## More screenshots
+
+The shell keeps all eight tabs, both themes, and a status line that knows the difference between
+saved, edited and failed.
+
+![Editor shell, light theme](screenshots/editor/shell-light.png)
+
+![Editor shell, dark theme](screenshots/editor/shell-dark.png)
 
 ![Mounts tab](screenshots/editor/mounts.png)
 
-![Mounts tab — dark theme](screenshots/editor/mounts-dark.png)
+![Mounts tab, dark theme](screenshots/editor/mounts-dark.png)
 
 | Members | Characters |
 | --- | --- |
@@ -161,83 +227,57 @@ edited, and failed operations.
 
 ![Diagnostics tab](screenshots/editor/diag.png)
 
-![Recorder inspector — dark theme](screenshots/editor/recorder-inspector-dark.png)
+![Recorder inspector, dark theme](screenshots/editor/recorder-inspector-dark.png)
 
-More editor views (Members, Characters / Recorder Inspector, Diagnostics, Talents, Raw recorder fields) are also documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
+More editor views are documented in the [Prospect Editor wiki pages](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki).
 
 ---
 
-## Common Tasks
+## Things I do often
 
-### Change server name or ports
+**Change the server name or ports**
+
 1. Open **Server Settings**.
-2. Edit values.
+2. Edit the values.
 3. Click **Save to INI**.
 4. Restart from the app.
 
-### Move server config to another machine
+**Move a server to another machine**
+
 1. Export a config bundle.
-2. Copy it to the new machine.
-3. Import bundle and validate paths.
+2. Copy it over.
+3. Import it and fix any paths that changed.
 
-### Back up world/prospect data
-- Use backup actions in **Server Settings** (zip or folder copy).
+**Back up a world**
 
-### Keep Prospect Editor safe
-- Use **Save As** before major edits.
-- Keep external backups, not just `.bak` files.
-- Treat recorder-level edits as advanced/high-risk changes.
+- Use the backup actions in **Server Settings**, either a zip or a folder copy.
 
----
+**Undo a bad prospect edit**
 
-## Release Tagging and CI (Maintainers)
-
-### Tag strategy
-- Server Manager releases: `manager-v*` (preferred), legacy `v*` still supported.
-- Prospect Editor releases: `editor-v*`.
-
-### What each workflow does
-- `dotnet-ci.yml`: build + test for branches and PRs.
-- `release-manager.yml`: packages manager zip, creates release, updates `MANAGER_RELEASE_BLOCK`.
-- `release-editor.yml`: packages editor zip, creates release, updates `EDITOR_RELEASE_BLOCK`.
-
-### Example commands
-
-```bash
-# Server Manager (preferred)
-git tag manager-v1.0.9
-git push origin manager-v1.0.9
-
-# Server Manager (legacy track)
-git tag v1.0.8
-git push origin v1.0.8
-
-# Prospect Editor
-git tag editor-v1.0.1
-git push origin editor-v1.0.1
-```
+- If you haven't saved: **Revert All**.
+- If you have: restore the `.bak` file that sits next to the prospect.
 
 ---
 
 ## Requirements
 
 - Windows
-- .NET 8 Desktop Runtime for published builds
-- .NET 8 SDK if building from source
+- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) for the release zips
+- .NET 8 SDK if you want to build it yourself
 
 ---
 
-## Where Files Are Stored
+## Where it keeps files
 
 - Manager options: `%LocalAppData%\IcarusServerManager\manager-options.json`
-- Manager logs: `logs\manager-YYYYMMDD.log` (next to executable)
-- Prospect Editor logs: `%LocalAppData%\IcarusProspectEditor\logs\`
-- Prospect Editor update settings: `%LocalAppData%\IcarusProspectEditor\prospect-editor-update.json`
+- Manager logs: `logs\manager-YYYYMMDD.log` next to the executable
+- Editor logs: `%LocalAppData%\IcarusProspectEditor\logs\`
+- Editor update settings: `%LocalAppData%\IcarusProspectEditor\prospect-editor-update.json`
 - Server INI default: `Icarus\Saved\Config\WindowsServer\ServerSettings.ini`
 
 ---
 
-## Build From Source
+## Building it yourself
 
 ```bash
 dotnet restore IcarusServerManager.sln
@@ -250,15 +290,38 @@ dotnet publish IcarusServerManager/IcarusServerManager.csproj -c Release -r win-
 dotnet publish IcarusProspectEditor/IcarusProspectEditor.csproj -c Release -r win-x64 --self-contained false -o ./publish-editor
 ```
 
+The version comes from the git tag. A tagged commit builds that exact version; anything after a tag
+builds the next prerelease with the commit hash. You don't edit version numbers in the projects.
+
 ---
 
-## Wiki and References
+## Releases and CI
 
-- Project wiki: [Icarus Server Manager Tool Wiki](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki)
-- Icarus launch/server parameters: [RocketWerkz Icarus Dedicated Server Wiki](https://github.com/RocketWerkz/IcarusDedicatedServer/wiki/Server-Config-&-Launch-Parameters)
+Tags drive everything:
+
+- Server Manager: `manager-vX.Y.Z` (legacy `vX.Y.Z` still works)
+- Prospect Editor: `editor-vX.Y.Z`
+
+`dotnet-ci.yml` builds and tests branches and pull requests. The two release workflows build the
+zips, create the GitHub release, and update the release block at the top of this file.
+
+```bash
+git tag -a manager-v3.0.0 -m "Icarus Server Manager 3.0.0"
+git push origin manager-v3.0.0
+
+git tag -a editor-v3.0.0 -m "Icarus Prospect Editor 3.0.0"
+git push origin editor-v3.0.0
+```
+
+---
+
+## Wiki and references
+
+- [Project wiki](https://github.com/DukeVenator/Icarus-Server-Manager-Tool/wiki)
+- [Icarus dedicated server config and launch parameters](https://github.com/RocketWerkz/IcarusDedicatedServer/wiki/Server-Config-&-Launch-Parameters)
 
 ---
 
 ## License
 
-See [LICENSE.md](LICENSE.md).
+GPLv3. See [LICENSE.md](LICENSE.md).
